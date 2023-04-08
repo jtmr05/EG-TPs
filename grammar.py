@@ -85,7 +85,7 @@ string_literal : /".*?"/
 bool_literal   : "true" | "false"
 float_literal  : /-?[0-9]+(\.[0-9]+)/
 list_literal   : "[" (expression ("," expression)*)? "]"
-tuple_literal  : "(" (expression ("," expression)*)? ")"
+tuple_literal  : "(" expression ("," expression)+ ")"
 
 %import common.WS
 %ignore WS
