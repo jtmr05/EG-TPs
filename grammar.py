@@ -30,19 +30,19 @@ type           : "int"
                | "array" "<" type ">"
                | "list"  "<" type ">"
 expression     : "(" expression ")"
-               | expression "+" expression
-               | expression "-" expression
-               | expression "*" expression
-               | expression "/" expression
-               | expression "%" expression
-               | expression "^" expression
-               | expression "^:" expression
-               | expression "$:" expression
-               | expression "==" expression
-               | expression "!=" expression
-               | expression "&&" expression
-               | expression "||" expression
-               | "!" expression
+               | plus_expr
+               | minus_expr
+               | mul_expr
+               | div_expr
+               | mod_expr
+               | exp_expr
+               | prepend_expr
+               | append_expr
+               | eq_expr
+               | neq_expr
+               | and_expr
+               | or_expr
+               | not_expr
                | CONSTRUCT_ID "[" expression "]"
                | CONSTRUCT_ID
                | literal
@@ -50,6 +50,19 @@ expression     : "(" expression ")"
                | read
                | head
                | tail
+plus_expr      : expression "+" expression
+minus_expr     : expression "-" expression
+mul_expr       : expression "*" expression
+div_expr       : expression "/" expression
+mod_expr       : expression "%" expression
+exp_expr       : expression "^" expression
+prepend_expr   : expression "^:" expression
+append_expr    : expression "$:" expression
+eq_expr        : expression "==" expression
+neq_expr       : expression "!=" expression
+and_expr       : expression "&&" expression
+or_expr        : expression "||" expression
+not_expr       : "!" expression
 func_call      : CONSTRUCT_ID "(" (expression ("," expression)*)? ")"
 control_flow   : branch_flow
                | loop_flow
@@ -70,7 +83,7 @@ while_flow     : "while" "(" expression ")" "{" instruction* "}"
 do_while_flow  : "do" "{" instruction* "}" "while" "(" expression ")" ";"
 for_flow       : "for" "(" CONSTRUCT_ID "in" expression ")" "{" instruction* "}"
 read           : "read" "(" ")"
-write          : "write" "(" (expression ("," expression)*)? ")" ";"
+write          : "write" "(" expression ("," expression)* ")" ";"
 head           : "head" "(" expression ")"
 tail           : "tail" "(" expression ")"
 CONSTRUCT_ID   : /[_A-Za-z][_A-Za-z0-9]*/
@@ -83,7 +96,7 @@ literal        : int_literal
 int_literal    : /-?[0-9]+/
 string_literal : /".*?"/
 bool_literal   : "true" | "false"
-float_literal  : /-?[0-9]+(\.[0-9]+)/
+float_literal  : /-?[0-9]+(\.[0-9]+)?/
 list_literal   : "[" (expression ("," expression)*)? "]"
 tuple_literal  : "(" expression ("," expression)+ ")"
 
@@ -117,7 +130,7 @@ def main() -> int:
 
         fn foo(var: int, baz: string) -> array<list<tuple<int, string>>> {
             let x: float = 3.0;
-            return 3 $: 1;
+            return 3 $: [];
             bar();
             unless(x == 4){
                 return false;
