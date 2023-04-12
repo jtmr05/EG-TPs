@@ -9,26 +9,34 @@ grammar: str = '''
 unit           : construct*
 construct      : func_defn
                | var_defn
+
 func_defn      : "fn" CONSTRUCT_ID func_params ("->" type)? "{" instruction* "}"
 func_params    : "(" (var_bind ("," var_bind)*)? ")"
+
 var_defn       : "let" var_bind "=" expression ";"
+
 var_bind       : CONSTRUCT_ID ":" type
+
 instruction    : var_defn
                | ret
                | control_flow
                | attrib
                | write
                | func_call ";"
+
 ret            : "return" expression ";"
+
 attrib         : CONSTRUCT_ID "=" expression ";"
                | CONSTRUCT_ID "[" expression "]" "=" expression ";"
+
 type           : "int"
                | "bool"
                | "string"
                | "float"
                | "tuple" "<" type ("," type)+ ">"
-               | "array" "<" type ">"
+               | "array" "<" type "," int_literal ">"
                | "list"  "<" type ">"
+
 expression     : "(" expression ")"
                | plus_expr
                | minus_expr
@@ -63,9 +71,13 @@ neq_expr       : expression "!=" expression
 and_expr       : expression "&&" expression
 or_expr        : expression "||" expression
 not_expr       : "!" expression
+
 func_call      : CONSTRUCT_ID "(" (expression ("," expression)*)? ")"
+
+
 control_flow   : branch_flow
                | loop_flow
+
 branch_flow    : if_flow
                | unless_flow
                | case_flow
@@ -76,17 +88,24 @@ unless_flow    : "unless" "(" expression ")" "{" instruction* "}"
 case_flow      : "case" "(" expression ")" "{" of_flow* default_flow "}"
 of_flow        : "of" "(" (int_literal|string_literal) ")" "{" instruction* "}"
 default_flow   : "default" "{" instruction* "}"
+
+
 loop_flow      : while_flow
                | do_while_flow
                | for_flow
 while_flow     : "while" "(" expression ")" "{" instruction* "}"
 do_while_flow  : "do" "{" instruction* "}" "while" "(" expression ")" ";"
 for_flow       : "for" "(" CONSTRUCT_ID "in" expression ")" "{" instruction* "}"
+
+
 read           : "read" "(" ")"
 write          : "write" "(" expression ("," expression)* ")" ";"
+
 head           : "head" "(" expression ")"
 tail           : "tail" "(" expression ")"
+
 CONSTRUCT_ID   : /[_A-Za-z][_A-Za-z0-9]*/
+
 literal        : int_literal
                | string_literal
                | bool_literal
@@ -126,40 +145,40 @@ def main() -> int:
 
     tests: list[str] = [
         '''
-        let y: bool = true;
+let y: bool = true;
 
-        fn foo(var: int, baz: string) -> array<list<tuple<int, string>>> {
-            let x: float = 3.0;
-            return 3 $: [];
-            bar();
-            unless(x == 4){
-                return false;
-            }
+fn foo(var: int, baz: string) -> array<list<tuple<int, string>>, 10> {
+    let x: float = 3.0;
+    return 3 $: [];
+    bar();
+    unless(x == 4){
+        return false;
+    }
 
-            if(true != false){
-                if(true){
-                }
-            }
-            elif(1 + 1){ }
-            else { }
-            x = 3;
+    if(true != false){
+        if(true){
         }
+    }
+    elif(1 + 1){ }
+    else { }
+    x = 3;
+}
 
-        fn bar() {
-            let i: array<int> = [1,2,3,45];
-            case(1+1){
-                of(1){ }
-                of(2){ }
-                default { }
-            }
+fn bar() {
+    let i: array<int, 4> = [1,2,3,45];
+    case(1+1){
+        of(1){ }
+        of(2){ }
+        default { }
+    }
 
-            while(true){ }
+    while(true){ }
 
-            for(a in [1,2,3]){ read(); }
+    for(a in [1,2,3]){ read(); }
 
-            return (1+1, 2+2);
-        }
-        '''
+    return (1+1, 2+2);
+}
+'''
     ]
 
     parser: lark.Lark = lark.Lark(grammar, start='unit')
