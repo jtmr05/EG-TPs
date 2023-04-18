@@ -2,7 +2,8 @@
 
 import lark
 import sys
-import typing
+
+import utils
 
 
 grammar: str = '''
@@ -124,21 +125,154 @@ tuple_literal  : "(" expression ("," expression)+ ")"
 '''
 
 
-def annotate(src: typing.Any, *ansi_escape_codes: int) -> str:
+class ImperativeProgrammingLanguageInterpreter(lark.visitors.Interpreter):
 
-    length: int = len(ansi_escape_codes)
-    if length == 0:
-        return str(src)
+    def unit(self, tree: lark.tree.Tree):
+        pass
 
-    import io
-    str_buffer: io.StringIO = io.StringIO()
+    def construct(self, tree: lark.tree.Tree):
+        pass
 
-    str_buffer.write(f"\033[{ansi_escape_codes[0]}")
-    for i in range(1, length):
-        str_buffer.write(f";{ansi_escape_codes[i]}")
-    str_buffer.write(f"m{str(src)}\033[0m")
+    def func_defn(self, tree: lark.tree.Tree):
+        pass
 
-    return str_buffer.getvalue()
+    def func_params(self, tree: lark.tree.Tree):
+        pass
+
+    def var_defn(self, tree: lark.tree.Tree):
+        pass
+
+    def var_bind(self, tree: lark.tree.Tree):
+        pass
+
+    def instruction(self, tree: lark.tree.Tree):
+        pass
+
+    def ret(self, tree: lark.tree.Tree):
+        pass
+
+    def attrib(self, tree: lark.tree.Tree):
+        pass
+
+    def type(self, tree: lark.tree.Tree):
+        pass
+
+    def expression(self, tree: lark.tree.Tree):
+        pass
+
+    def plus_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def minus_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def mul_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def div_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def mod_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def exp_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def prepend_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def append_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def eq_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def neq_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def and_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def or_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def not_expr(self, tree: lark.tree.Tree):
+        pass
+
+    def func_call(self, tree: lark.tree.Tree):
+        pass
+
+    def control_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def branch_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def if_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def elif_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def else_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def unless_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def case_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def of_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def default_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def loop_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def while_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def do_while_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def for_flow(self, tree: lark.tree.Tree):
+        pass
+
+    def read(self, tree: lark.tree.Tree):
+        pass
+
+    def write(self, tree: lark.tree.Tree):
+        pass
+
+    def head(self, tree: lark.tree.Tree):
+        pass
+
+    def tail(self, tree: lark.tree.Tree):
+        pass
+
+    def literal(self, tree: lark.tree.Tree):
+        pass
+
+    def int_literal(self, tree: lark.tree.Tree):
+        pass
+
+    def string_literal(self, tree: lark.tree.Tree):
+        pass
+
+    def bool_literal(self, tree: lark.tree.Tree):
+        pass
+
+    def float_literal(self, tree: lark.tree.Tree):
+        pass
+
+    def list_literal(self, tree: lark.tree.Tree):
+        pass
+
+    def tuple_literal(self, tree: lark.tree.Tree):
+        pass
 
 
 def main() -> int:
@@ -187,13 +321,22 @@ fn bar() {
 
         try:
             parser.parse(t)
-            print(f"==> test '{annotate(t, 1)}' {annotate('passed', 32, 1)}!", file=sys.stderr)
+            print(
+                f"==> test '{utils.annotate(t, 1)}' {utils.annotate('passed', 32, 1)}!",
+                file=sys.stderr
+            )
 
         except lark.UnexpectedCharacters:
-            print(f"==> test '{annotate(t, 1)}' {annotate('failed', 31, 1)}!", file=sys.stderr)
+            print(
+                f"==> test '{utils.annotate(t, 1)}' {utils.annotate('failed', 31, 1)}!",
+                file=sys.stderr
+            )
 
         except lark.GrammarError:
-            print(f"==> test '{annotate(t, 1)}' {annotate('failed', 31, 1)}!", file=sys.stderr)
+            print(
+                f"==> test '{utils.annotate(t, 1)}' {utils.annotate('failed', 31, 1)}!",
+                file=sys.stderr
+            )
 
         print("\n")
 
