@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import lark
+import re
 import sys
 import enum
 import collections
@@ -8,7 +9,7 @@ import collections
 import utils
 
 
-grammar: str = '''
+GRAMMAR: str = '''
 unit           : construct*
 construct      : func_defn
                | var_defn
@@ -32,20 +33,20 @@ ret            : "return" expression ";"
 attrib         : CONSTRUCT_ID "=" expression ";"
                | CONSTRUCT_ID "[" expression "]" "=" expression ";"
 
-type           : int_t
-               | bool_t
-               | string_t
-               | float_t
+type           : INT_T
+               | BOOL_T
+               | STRING_T
+               | FLOAT_T
                | tuple_t
                | array_t
                | list_t
 
-int_t          : "int"
-bool_t         : "bool"
-string_t       : "string"
-float_t        : "float"
+INT_T          : "int"
+BOOL_T         : "bool"
+STRING_T       : "string"
+FLOAT_T        : "float"
 tuple_t        : "tuple" "<" type ("," type)+ ">"
-array_t        : "array" "<" type "," int_literal ">"
+array_t        : "array" "<" type "," INT_LITERAL ">"
 list_t         : "list"  "<" type ">"
 
 expression     : "(" expression ")"
@@ -97,7 +98,7 @@ elif_flow      : "elif" "(" expression ")" "{" instruction* "}"
 else_flow      : "else" "{" instruction* "}"
 unless_flow    : "unless" "(" expression ")" "{" instruction* "}"
 case_flow      : "case" "(" expression ")" "{" of_flow* default_flow "}"
-of_flow        : "of" "(" (int_literal|string_literal) ")" "{" instruction* "}"
+of_flow        : "of" "(" (INT_LITERAL|STRING_LITERAL) ")" "{" instruction* "}"
 default_flow   : "default" "{" instruction* "}"
 
 
@@ -117,22 +118,24 @@ tail           : "tail" "(" expression ")"
 
 CONSTRUCT_ID   : /[_A-Za-z][_A-Za-z0-9]*/
 
-literal        : int_literal
-               | string_literal
-               | bool_literal
-               | float_literal
+literal        : INT_LITERAL
+               | STRING_LITERAL
+               | BOOL_LITERAL
+               | FLOAT_LITERAL
                | list_literal
                | tuple_literal
-int_literal    : /-?[0-9]+/
-string_literal : /".*?"/
-bool_literal   : /true|false/
-float_literal  : /-?[0-9]+(\.[0-9]+)?/
+INT_LITERAL    : /-?[0-9]+/
+STRING_LITERAL : /".*?"/
+BOOL_LITERAL   : /true|false/
+FLOAT_LITERAL  : /-?[0-9]+(\.[0-9]+)?/
 list_literal   : "[" (expression ("," expression)*)? "]"
 tuple_literal  : "(" expression ("," expression)+ ")"
 
 %import common.WS
 %ignore WS
 '''
+
+TERM_LITERAL_PATTERN: re.Pattern = re.compile('\b(INT|STRING|BOOL|FLOAT)_LITERAL\b')
 
 
 class Type(enum.Enum):
@@ -144,11 +147,11 @@ class Type(enum.Enum):
 
 class IplInterpreter(lark.visitors.Interpreter):
 
-    __vars__: collections.OrderedDict[str, Type]
-    __num_of_vars_stack__: list[int]
-    __num_of_new_vars__: int
+    _vars: collections.OrderedDict[str, Type]
+    _num_of_vars_stack: list[int]
+    _num_of_new_vars: int
 
-    __keywords__: frozenset[str] = frozenset(
+    _keywords: frozenset[str] = frozenset(
         [
             'fn', 'let', 'return', 'int', 'bool', 'string',
             'float', 'tuple', 'array', 'list', 'read', 'write',
@@ -160,18 +163,19 @@ class IplInterpreter(lark.visitors.Interpreter):
     )
 
     def __init__(self):
-        self.__vars__ = collections.OrderedDict()
-        self.__num_of_vars_stack__ = list()
-        self.__num_of_new_vars__ = 0
+        self._vars = collections.OrderedDict()
+        self._num_of_vars_stack = list()
+        self._num_of_new_vars = 0
 
-    def __new_scope__(self):
-        self.__num_of_vars_stack__.append(self.__num_of_new_vars__)
-        self.__num_of_new_vars__ = 0
+    def _new_scope(self):
+        self._num_of_vars_stack.append(self._num_of_new_vars)
+        self._num_of_new_vars = 0
 
-    def __end_scope__(self):
-        for _ in range(0, self.__num_of_new_vars__):
-            self.__vars__.popitem()
-        self.__num_of_new_vars__ = self.__num_of_vars_stack__.pop()
+    def _end_scope(self):
+        #print(self._vars)
+        for _ in range(0, self._num_of_new_vars):
+            self._vars.popitem()
+        self._num_of_new_vars = self._num_of_vars_stack.pop()
 
     def unit(self, tree: lark.tree.Tree):
         for c in tree.children:
@@ -182,7 +186,7 @@ class IplInterpreter(lark.visitors.Interpreter):
 
     def func_defn(self, tree: lark.tree.Tree):
 
-        self.__new_scope__()
+        self._new_scope()
 
         begin_index: int = 2
         if len(tree.children) > 2:
@@ -191,17 +195,17 @@ class IplInterpreter(lark.visitors.Interpreter):
         for n in range(begin_index, len(tree.children)):
             self.visit(tree.children[n])
 
-        self.__end_scope__()
+        self._end_scope()
 
     def func_params(self, tree: lark.tree.Tree):
         pass
 
     def var_defn(self, tree: lark.tree.Tree):
-        self.__num_of_new_vars__ += 1
+        self._num_of_new_vars += 1
         self.visit(tree.children[0])
 
     def var_bind(self, tree: lark.tree.Tree):
-        self.__vars__[tree.children[0].value] = self.visit(tree.children[1])
+        self._vars[tree.children[0].value] = self.visit(tree.children[1])
 
     def instruction(self, tree: lark.tree.Tree):
         self.visit(tree.children[0])
@@ -214,34 +218,10 @@ class IplInterpreter(lark.visitors.Interpreter):
 
     def type(self, tree: lark.tree.Tree):
 
-        match tree.children[0].data:
+        if isinstance(tree.children[0], lark.lexer.Token):
+            return Type[tree.children[0].value.upper()]
 
-            case 'int_t':
-                return Type.INT
-
-            case 'string_t':
-                return Type.STRING
-
-            case 'float_t':
-                return Type.FLOAT
-
-            case 'bool_t':
-                return Type.BOOL
-
-            case _:
-                return None
-
-    def int_t(self, tree: lark.tree.Tree):
-        pass
-
-    def bool_t(self, tree: lark.tree.Tree):
-        pass
-
-    def string_t(self, tree: lark.tree.Tree):
-        pass
-
-    def float_t(self, tree: lark.tree.Tree):
-        pass
+        return None
 
     def tuple_t(self, tree: lark.tree.Tree):
         pass
@@ -255,48 +235,87 @@ class IplInterpreter(lark.visitors.Interpreter):
     def expression(self, tree: lark.tree.Tree):
         if isinstance(tree.children[0], lark.tree.Tree):
             self.visit(tree.children[0])
-        elif not tree.children[0].value in self.__vars__:
+        elif not tree.children[0].value in self._vars:
             print(f"{tree.children[0].value}: variable not in scope")
 
     def plus_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        assert lhs_type == Type.FLOAT or lhs_type == Type.INT or lhs_type == Type.STRING
+        return lhs_type
 
     def minus_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        assert lhs_type == Type.FLOAT or lhs_type == Type.INT
+        return lhs_type
 
     def mul_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        assert lhs_type == Type.FLOAT or lhs_type == Type.INT
+        return lhs_type
 
     def div_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        assert lhs_type == Type.FLOAT or lhs_type == Type.INT
+        return lhs_type
 
     def mod_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == Type.INT
+        assert rhs_type == Type.INT
+        return Type.INT
 
     def exp_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        assert lhs_type == Type.FLOAT or lhs_type == Type.INT
+        return lhs_type
 
     def prepend_expr(self, tree: lark.tree.Tree):
+        # TODO return list type
         pass
 
     def append_expr(self, tree: lark.tree.Tree):
+        # TODO return list type
         pass
 
     def eq_expr(self, tree: lark.tree.Tree):
-        for c in tree.children:
-            self.visit(c)
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        return Type.BOOL
 
     def neq_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        return Type.BOOL
 
     def and_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        return Type.BOOL
 
     def or_expr(self, tree: lark.tree.Tree):
-        pass
+        lhs_type: Type = self.visit(tree.children[0])
+        rhs_type: Type = self.visit(tree.children[1])
+        assert lhs_type == rhs_type
+        return Type.BOOL
 
     def not_expr(self, tree: lark.tree.Tree):
-        pass
+        op_type: Type = self.visit(tree.children[0])
+        assert op_type == Type.BOOL
+        return Type.BOOL
 
     def func_call(self, tree: lark.tree.Tree):
         pass
@@ -308,73 +327,73 @@ class IplInterpreter(lark.visitors.Interpreter):
         self.visit(tree.children[0])
 
     def if_flow(self, tree: lark.tree.Tree):
-        self.__new_scope__()
+        self._new_scope()
         ind: int = 1
         for i in range(ind, len(tree.children)):
             if tree.children[i].data != 'instruction':
                 ind = i
                 break
             self.visit(tree.children[i])
-        self.__end_scope__()
+        self._end_scope()
 
         for i in range(ind, len(tree.children)):
             self.visit(tree.children[i])
 
     def elif_flow(self, tree: lark.tree.Tree):
-        self.__new_scope__()
+        self._new_scope()
         for n in range(1, len(tree.children)):
             self.visit(tree.children[n])
-        self.__end_scope__()
+        self._end_scope()
 
     def else_flow(self, tree: lark.tree.Tree):
-        self.__new_scope__()
+        self._new_scope()
         for c in tree.children:
             self.visit(c)
-        self.__end_scope__()
+        self._end_scope()
 
     def unless_flow(self, tree: lark.tree.Tree):
-        self.__new_scope__()
+        self._new_scope()
         for n in range(1, len(tree.children)):
             self.visit(tree.children[n])
-        self.__end_scope__()
+        self._end_scope()
 
     def case_flow(self, tree: lark.tree.Tree):
         for n in range(1, len(tree.children)):
             self.visit(tree.children[n])
 
     def of_flow(self, tree: lark.tree.Tree):
-        self.__new_scope__()
+        self._new_scope()
         for n in range(1, len(tree.children)):
             self.visit(tree.children[n])
-        self.__end_scope__()
+        self._end_scope()
 
     def default_flow(self, tree: lark.tree.Tree):
-        self.__new_scope__()
+        self._new_scope()
         for c in tree.children:
             self.visit(c)
-        self.__end_scope__()
+        self._end_scope()
 
     def loop_flow(self, tree: lark.tree.Tree):
         self.visit(tree.children[0])
 
     def while_flow(self, tree: lark.tree.Tree):
         self.visit(tree.children[0])
-        self.__new_scope__()
+        self._new_scope()
         for n in range(1, len(tree.children)):
             self.visit(tree.children[n])
-        self.__end_scope__()
+        self._end_scope()
 
     def do_while_flow(self, tree: lark.tree.Tree):
-        self.__new_scope__()
+        self._new_scope()
         for n in range(1, len(tree.children) - 1):
             self.visit(tree.children[n])
-        self.__end_scope__()
+        self._end_scope()
 
     def for_flow(self, tree: lark.tree.Tree):
-        self.__new_scope__()
+        self._new_scope()
         for n in range(2, len(tree.children)):
             self.visit(tree.children[n])
-        self.__end_scope__()
+        self._end_scope()
 
     def read(self, tree: lark.tree.Tree):
         pass
@@ -389,19 +408,9 @@ class IplInterpreter(lark.visitors.Interpreter):
         pass
 
     def literal(self, tree: lark.tree.Tree):
-        pass
-
-    def int_literal(self, tree: lark.tree.Tree):
-        pass
-
-    def string_literal(self, tree: lark.tree.Tree):
-        pass
-
-    def bool_literal(self, tree: lark.tree.Tree):
-        pass
-
-    def float_literal(self, tree: lark.tree.Tree):
-        pass
+        if match_obj := TERM_LITERAL_PATTERN.match(tree.children[0].data):
+            return Type[match_obj.group(1)]
+        return None
 
     def list_literal(self, tree: lark.tree.Tree):
         pass
@@ -470,11 +479,10 @@ fn foo() {
 fn bar() {
 
 }
-
 '''
     ]
 
-    parser: lark.Lark = lark.Lark(grammar, start='unit')
+    parser: lark.Lark = lark.Lark(GRAMMAR, start='unit')
 
     for t in tests:
 
