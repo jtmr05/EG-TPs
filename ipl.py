@@ -923,14 +923,14 @@ def main() -> int:
             interpreter: IplInterpreter = IplInterpreter()
             interpreter.transform(tree)
 
-            print(tree.pretty())
+            #print(tree.pretty())
             with open(f'output_test{ind + 1}.html', 'w') as fh:
                 fh.write(interpreter.get_html())
 
-            #print(
-            #    f"==> test '{utils.annotate(t, 1)}' {utils.annotate('passed', 32, 1)}!",
-            #    file=sys.stderr
-            #)
+            print(
+                f"==> test '{utils.annotate(t, 1)}' {utils.annotate('passed', 32, 1)}!",
+                file=sys.stderr
+            )
 
         except lark.UnexpectedCharacters:
             print(
