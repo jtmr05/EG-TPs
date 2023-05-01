@@ -910,13 +910,13 @@ def main() -> int:
             let b: bool = true;
 
             if(x){
-                let a: string = "kddk";
+                let a: string = "example";
             }
             elif(x == b){
-                let sksj: string = "kdlls";
+                let a: string = "another one";
             }
 
-            while(kk == uu){
+            while(k == u){
                 let h: float = 1.0;
             }
         }
