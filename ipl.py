@@ -10,12 +10,24 @@ import textwrap
 import utils
 
 
-GRAMMAR: str = '''
+KEYWORDS: frozenset[str] = frozenset(
+    [
+        'fn', 'let', 'return', 'int', 'bool', 'string',
+        'float', 'tuple', 'array', 'list', 'read', 'write',
+        'if', 'else', 'elif', 'unless',
+        'case', 'of', 'default'
+        'while', 'for', 'do', 'in', 'head', 'tail'
+        'true', 'false'
+    ]
+)
+
+
+GRAMMAR: str = f'''
 unit           : construct*
 construct      : func_defn
                | var_defn
 
-func_defn      : "fn" CONSTRUCT_ID func_params ("->" type)? "{" instruction* "}"
+func_defn      : "fn" CONSTRUCT_ID func_params ("->" type)? "{{" instruction* "}}"
 func_params    : "(" (var_bind ("," var_bind)*)? ")"
 
 var_defn       : "let" var_bind "=" expression ";"
@@ -24,9 +36,9 @@ var_bind       : CONSTRUCT_ID ":" type
 
 instruction    : var_defn
                | ret
+               | write
                | control_flow
                | attrib
-               | write
                | func_call ";"
 
 ret            : "return" expression? ";"
@@ -63,11 +75,11 @@ expression     : prepend_expr
                | mod_expr
                | exp_expr
                | not_expr
-               | func_call
                | read
                | head
                | tail
                | literal
+               | func_call
                | var_deref
                | paren_expr
 plus_expr      : expression "+" expression
@@ -95,21 +107,21 @@ control_flow   : branch_flow
 branch_flow    : if_flow
                | unless_flow
                | case_flow
-if_flow        : "if" "(" expression ")" "{" instruction* "}" elif_flow* else_flow?
-elif_flow      : "elif" "(" expression ")" "{" instruction* "}"
-else_flow      : "else" "{" instruction* "}"
-unless_flow    : "unless" "(" expression ")" "{" instruction* "}"
-case_flow      : "case" "(" expression ")" "{" of_flow* default_flow "}"
-of_flow        : "of" "(" (int_literal|string_literal) ")" "{" instruction* "}"
-default_flow   : "default" "{" instruction* "}"
+if_flow        : "if" "(" expression ")" "{{" instruction* "}}" elif_flow* else_flow?
+elif_flow      : "elif" "(" expression ")" "{{" instruction* "}}"
+else_flow      : "else" "{{" instruction* "}}"
+unless_flow    : "unless" "(" expression ")" "{{" instruction* "}}"
+case_flow      : "case" "(" expression ")" "{{" of_flow* default_flow "}}"
+of_flow        : "of" "(" (int_literal|string_literal) ")" "{{" instruction* "}}"
+default_flow   : "default" "{{" instruction* "}}"
 
 
 loop_flow      : while_flow
                | do_while_flow
                | for_flow
-while_flow     : "while" "(" expression ")" "{" instruction* "}"
-do_while_flow  : "do" "{" instruction* "}" "while" "(" expression ")" ";"
-for_flow       : "for" "(" CONSTRUCT_ID "in" expression ")" "{" instruction* "}"
+while_flow     : "while" "(" expression ")" "{{" instruction* "}}"
+do_while_flow  : "do" "{{" instruction* "}}" "while" "(" expression ")" ";"
+for_flow       : "for" "(" CONSTRUCT_ID "in" expression ")" "{{" instruction* "}}"
 
 
 read           : "read" "(" ")"
@@ -118,7 +130,7 @@ write          : "write" "(" expression ("," expression)* ")" ";"
 head           : "head" "(" expression ")"
 tail           : "tail" "(" expression ")"
 
-CONSTRUCT_ID   : /[_A-Za-z][_A-Za-z0-9]*/
+CONSTRUCT_ID   : /\\b(?!({'|'.join(KEYWORDS)})\\b)[_A-Za-z][_A-Za-z0-9]*\\b/
 
 literal        : int_literal
                | float_literal
@@ -131,9 +143,9 @@ int_literal    : /-?[0-9]+/
 float_literal  : /-?[0-9]+\.[0-9]+/
 BOOL_LITERAL   : "true" | "false"
 string_literal : STRING
-list_literal   : "[" expression ("," expression)* "]"
-array_literal  : "{" (expression ("," expression)*)? "}"
-tuple_literal  : "|" (expression ("," expression)+)? "|"
+list_literal   : "["  (expression ("," expression)*)? "]"
+array_literal  : "{{" (expression ("," expression)*)? "}}"
+tuple_literal  : "|"   expression ("," expression)+ "|"
 
 %import common.WS
 %import common.ESCAPED_STRING -> STRING
@@ -182,18 +194,6 @@ class Type:
         return self._typename == t
 
 
-"""_keywords: frozenset[str] = frozenset(
-[
-        'fn', 'let', 'return', 'int', 'bool', 'string',
-        'float', 'tuple', 'array', 'list', 'read', 'write',
-        'if', 'else', 'elif', 'unless',
-        'case', 'of', 'default'
-        'while', 'for', 'do', 'in', 'head', 'tail'
-        'true', 'false'
-    ]
-)"""
-
-
 class IplInterpreter(lark.visitors.Interpreter):
 
     _vars: dict[str, Type]
@@ -234,7 +234,7 @@ class IplInterpreter(lark.visitors.Interpreter):
                     }
                     .error .errortext {
                       visibility: hidden;
-                      width: 500px;
+                      width: 600px;
                       background-color: #555;
                       color: #fff;
                       text-align: center;
@@ -365,7 +365,7 @@ class IplInterpreter(lark.visitors.Interpreter):
             param_types.append(var_type)
             code_strs.append(bind_code)
 
-        return tuple(param_types), f"({', '.join([str(x) for x in code_strs])})"
+        return tuple(param_types), f"({', '.join(code_strs)})"
 
     def var_defn(self, tree: lark.tree.Tree):
         var_id, var_type, bind_code = self.visit(tree.children[0])
@@ -417,7 +417,7 @@ class IplInterpreter(lark.visitors.Interpreter):
                 self._set_err_string('Variable not in scope')
             elif self._vars.get(var).base != BaseType.ARRAY:
                 self._set_err_string('Type of lhs operand for operator [] must be array')
-            elif value_tn != self._vars.get(var)._typename:
+            elif value_tn != self._vars.get(var)._typename[0]:
                 self._set_err_string('Mismatched types in assignment')
             elif ind_tn.base != BaseType.INT:
                 self._set_err_string('Type of rhs operand for operator [] must be int')
@@ -439,7 +439,7 @@ class IplInterpreter(lark.visitors.Interpreter):
 
         return (
             Type(BaseType.TUPLE, tuple(typenames)),
-            f"tuple&lt;{', '.join([str(x) for x in code_strs])}&gt;"
+            f"tuple&lt;{', '.join(code_strs)}&gt;"
         )
 
     def array_t(self, tree: lark.tree.Tree) -> (Type, str):
@@ -460,7 +460,11 @@ class IplInterpreter(lark.visitors.Interpreter):
         tn_rhs, code_rhs = self.visit(tree.children[1])
         if tn_lhs != tn_rhs:
             self._set_err_string('Type of operands for operator + must be the same')
-        elif tn_lhs.base != BaseType.FLOAT and tn_lhs.base != BaseType.INT:
+        elif (
+            tn_lhs.base != BaseType.FLOAT
+            and tn_lhs.base != BaseType.INT
+            and tn_lhs.base != BaseType.STRING
+        ):
             self._set_err_string('Type of operands for operator + must be int, float or string')
         return tn_lhs, f"{code_lhs} + {code_rhs}"
 
@@ -609,7 +613,7 @@ class IplInterpreter(lark.visitors.Interpreter):
                         self._set_err_string('Mismatched types in function call argument')
                         break
 
-        return expr_type, f"{tree.children[0]}({', '.join([str(x) for x in code_strs])})"
+        return expr_type, f"{tree.children[0]}({', '.join(code_strs)})"
 
     def control_flow(self, tree: lark.tree.Tree):
         self.visit(tree.children[0])
@@ -744,8 +748,11 @@ class IplInterpreter(lark.visitors.Interpreter):
         self._new_scope()
 
         tn, code = self.visit(tree.children[1])
-        self._add_var(tree.children[0], tn)
-        if tn.base != BaseType.LIST and tn.base != BaseType.ARRAY:
+        if tn.base == BaseType.ARRAY:
+            self._add_var(tree.children[0], tn._typename[0])
+        elif tn.base == BaseType.LIST:
+            self._add_var(tree.children[0], tn._typename)
+        else:
             self._set_err_string('Type of expression must iterable')
 
         self._flush_err_string(f'{self._indent_str[:-4]}for({tree.children[0]} in {code}){{')
@@ -765,7 +772,7 @@ class IplInterpreter(lark.visitors.Interpreter):
             _, code = self.visit(c)
             code_strs.append(code)
         self._flush_err_string(
-            f"{self._indent_str}write({', '.join([str(x) for x in code_strs])});"
+            f"{self._indent_str}write({', '.join(code_strs)});"
         )
 
     def head(self, tree: lark.tree.Tree) -> (Type, str):
@@ -786,14 +793,14 @@ class IplInterpreter(lark.visitors.Interpreter):
         else:
             return Type(BaseType.BOOL), tree.children[0]
 
-    def int_literal(self, tree: lark.tree.Tree) -> (Type, int):
-        return Type(BaseType.INT), int(tree.children[0])
+    def int_literal(self, tree: lark.tree.Tree) -> (Type, str):
+        return Type(BaseType.INT), tree.children[0]
 
     def string_literal(self, tree: lark.tree.Tree) -> (Type, str):
         return Type(BaseType.STRING), tree.children[0]
 
-    def float_literal(self, tree: lark.tree.Tree) -> (Type, float):
-        return Type(BaseType.FLOAT), float(tree.children[0])
+    def float_literal(self, tree: lark.tree.Tree) -> (Type, str):
+        return Type(BaseType.FLOAT), tree.children[0]
 
     def list_literal(self, tree: lark.tree.Tree) -> (Type, str):
         if len(tree.children) == 0:
@@ -811,7 +818,7 @@ class IplInterpreter(lark.visitors.Interpreter):
 
         return (
             Type(BaseType.LIST, tn0),
-            f"[{', '.join([str(x) for x in code_strs])}]"
+            f"[{', '.join(code_strs)}]"
         )
 
     def array_literal(self, tree: lark.tree.Tree) -> (Type, str):
@@ -830,7 +837,7 @@ class IplInterpreter(lark.visitors.Interpreter):
 
         return (
             Type(BaseType.ARRAY, (tn0, len(tree.children))),
-            f"{{{', '.join([str(x) for x in code_strs])}}}"
+            f"{{{', '.join(code_strs)}}}"
         )
 
     def tuple_literal(self, tree: lark.tree.Tree) -> (Type, str):
@@ -843,108 +850,141 @@ class IplInterpreter(lark.visitors.Interpreter):
 
         return (
             Type(BaseType.TUPLE, tuple(typenames)),
-            f"|{', '.join([str(x) for x in code_strs])}|"
+            f"|{', '.join(code_strs)}|"
         )
 
 
 def main() -> int:
 
     tests: list[str] = [
-        textwrap.dedent(
-            '''
-            let y: bool = true;
+        '''
+        let y: bool = true;
 
-            fn foo(var: int, baz: string) -> list<int> {
-                let x: float = 3.0;
-                return 3 $: [1];
-                bar();
-                unless(x == 4.0){
-                    return false;
-                }
-
-                if(true != false){
-                    if(true){
-                    }
-                }
-                elif(1 + 1){ }
-                else { }
-                x = 4.5;
+        fn foo(var: int, baz: string) -> list<int> {
+            let x: float = 3.0;
+            return 3 $: [1];
+            bar();
+            unless(x == 4.0){
+                return false;
             }
 
-            fn bar() -> tuple<int, int> {
-                let i: array<int, 4> = {};
-                case(1+1){
-                    of(1){ }
-                    of(2){ }
-                    default { }
-                }
-
-                while(true){ }
-
-                for(a in [1,2,3]){ read(); }
-
-                return |1+1, 2.0+2|;
-            }
-            '''
-        ),
-        textwrap.dedent(
-            '''
-            let y: bool = true;
-
-            fn foo() {
-                let x: float = 3.0;
-                let b: bool = true;
-
-                if(x){
-                    let a: string = "kddk";
-                }
-                elif(x == b){
-                    let sksj: string = "kdlls";
-                }
-
-                while(kk == uu){
-                    let h: float = 1.0;
+            if(true != false){
+                if(true){
                 }
             }
+            elif(1 + 1){ }
+            else { }
+            x = 4.5;
+        }
 
-            fn bar() {
-
+        fn bar() -> tuple<int, int> {
+            let i: array<int, 4> = {};
+            case(1+1){
+                of(1){ }
+                of(2){ }
+                default { }
             }
-            '''
-        )
+
+            while(true){ }
+
+            for(a in [1,2,3]){ write("\\n"); }
+
+            return |1+1, 2.0+2|;
+        }
+        ''',
+
+        '''
+        let y: bool = true;
+
+        fn foo() {
+            let x: float = 3.0;
+            let b: bool = true;
+
+            if(x){
+                let a: string = "kddk";
+            }
+            elif(x == b){
+                let sksj: string = "kdlls";
+            }
+
+            while(kk == uu){
+                let h: float = 1.0;
+            }
+        }
+
+        fn bar() {
+
+        }
+        ''',
+
+        '''
+        let foo: string = "cena\\"1\\"";
+        fn bar(a: int) -> float {
+            let f: string = foo + "\\n";
+            return (1.0 * 2.0);
+        }
+        fn foo() -> tuple<array<string, 4>, bool> {
+            let b: float = bar(1+2*3^4);
+            let c: float = bar(1+2*3^4, "foo");
+            let d: float = bar("foo");
+            let d: float = 1.0;
+            e = 12;
+
+            let input: string = "";
+            let inputs: array<string, 4> = {};
+            for(a in {0,1,2}){
+                let line: string = read();
+                inputs[a] = line;
+            }
+            write(inputs, b, c, (1+2+3)*4 % 5, bar(-1));
+            return |inputs, false|;
+        }
+        fn baz(){
+            let i: int = 0;
+            let l: list<int> = [1,2,3,4,5,6,7];
+            let s: list<string> = [];
+            while(i != 5){
+                i = i + 1;
+                let h: int = head(l);
+                write(h);
+                l = tail(l);
+                s = l;
+                unless(h % 2 == 0){
+                    return;
+                }
+            }
+        }
+
+        '''
     ]
 
     parser: lark.Lark = lark.Lark(GRAMMAR, start='unit')
 
-    for ind, t in enumerate(tests):
+    with open('ipl_log.log', 'w') as log:
+        for ind, t in enumerate(tests):
 
-        try:
-            tree: lark.ParseTree = parser.parse(t)
-            interpreter: IplInterpreter = IplInterpreter()
-            interpreter.transform(tree)
+            try:
+                tree: lark.ParseTree = parser.parse(t)
+                interpreter: IplInterpreter = IplInterpreter()
+                interpreter.transform(tree)
 
-            #print(tree.pretty())
-            with open(f'output_test{ind + 1}.html', 'w') as fh:
-                fh.write(interpreter.get_html())
+                #print(tree.pretty())
+                with open(f'output_test{ind + 1}.html', 'w') as fh:
+                    fh.write(interpreter.get_html())
 
-            print(
-                f"==> test '{utils.annotate(t, 1)}' {utils.annotate('passed', 32, 1)}!",
-                file=sys.stderr
-            )
+                print(
+                    f"==> test '{utils.annotate(t, 1)}' {utils.annotate('passed', 32, 1)}!",
+                    file=sys.stderr
+                )
 
-        except lark.UnexpectedCharacters:
-            print(
-                f"==> test '{utils.annotate(t, 1)}' {utils.annotate('failed', 31, 1)}!",
-                file=sys.stderr
-            )
+            except (lark.UnexpectedCharacters, lark.GrammarError) as e:
+                print(
+                    f"==> test '{utils.annotate(t, 1)}' {utils.annotate('failed', 31, 1)}!",
+                    file=sys.stderr
+                )
+                log.write(f'test {ind + 1}: {str(e)}')
 
-        except lark.GrammarError:
-            print(
-                f"==> test '{utils.annotate(t, 1)}' {utils.annotate('failed', 31, 1)}!",
-                file=sys.stderr
-            )
-
-        #print("\n")
+            print("\n")
 
     return 0
 
