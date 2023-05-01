@@ -234,7 +234,7 @@ class IplInterpreter(lark.visitors.Interpreter):
                     }
                     .error .errortext {
                       visibility: hidden;
-                      width: 600px;
+                      width: 700px;
                       background-color: #555;
                       color: #fff;
                       text-align: center;
@@ -313,12 +313,13 @@ class IplInterpreter(lark.visitors.Interpreter):
         self._indent_str = self._indent_str[:-4]
 
     def get_html(self) -> str:
+        self._html_buffer.write('</pre></div></body></html>')
         return self._html_buffer.getvalue()
 
-    def unit(self, tree: lark.tree.Tree):
-        for c in tree.children:
-            self.visit(c)
-        self._html_buffer.write('</pre></div></body></html>')
+    #def unit(self, tree: lark.tree.Tree):
+    #    for c in tree.children:
+    #        self.visit(c)
+    #    self._html_buffer.write('</pre></div></body></html>')
 
     def construct(self, tree: lark.tree.Tree):
         self.visit(tree.children[0])
@@ -630,10 +631,16 @@ class IplInterpreter(lark.visitors.Interpreter):
         self._flush_err_string(f'{self._indent_str}if({code}){{')
 
         self._new_scope()
-        for c in tree.children[1:]:
+        end_ind: int = 1
+        for _, c in enumerate(tree.children[1:]):
             if c.data != 'instruction':
-                self._end_scope()
-                self._html_buffer.write(f'{self._indent_str}}}\n')
+                break
+            end_ind += 1
+            self.visit(c)
+        self._end_scope()
+        self._html_buffer.write(f'{self._indent_str}}}\n')
+
+        for c in tree.children[end_ind:]:
             self.visit(c)
 
     def elif_flow(self, tree: lark.tree.Tree):
@@ -683,9 +690,11 @@ class IplInterpreter(lark.visitors.Interpreter):
             self._set_err_string('Type of case expression must be int or string')
 
         self._flush_err_string(f'{self._indent_str}case({code}){{')
+        self._new_scope()
         for c in tree.children[1:]:
             self.visit(c)
 
+        self._end_scope()
         self._html_buffer.write(f'{self._indent_str}}}\n')
 
     def of_flow(self, tree: lark.tree.Tree):
@@ -731,7 +740,7 @@ class IplInterpreter(lark.visitors.Interpreter):
 
     def do_while_flow(self, tree: lark.tree.Tree):
 
-        self._html_buffer.write(f'{self._indent_str}do {{')
+        self._html_buffer.write(f'{self._indent_str}do {{\n')
 
         self._new_scope()
         for c in tree.children[0:-1]:
@@ -784,7 +793,7 @@ class IplInterpreter(lark.visitors.Interpreter):
     def tail(self, tree: lark.tree.Tree) -> (Type, str):
         tn, code = self.visit(tree.children[0])
         if tn.base != BaseType.LIST:
-            self._set_err_string('list() operations can be only be used on lists')
+            self._set_err_string('tail() operations can be only be used on lists')
         return tn, f"tail({code})"
 
     def literal(self, tree: lark.tree.Tree) -> (Type, str):
@@ -939,7 +948,7 @@ def main() -> int:
             write(inputs, b, c, (1+2+3)*4 % 5, bar(-1));
             return |inputs, false|;
         }
-        fn baz(){
+        fn baz() -> int {
             let i: int = 0;
             let l: list<int> = [1,2,3,4,5,6,7];
             let s: list<string> = [];
@@ -953,6 +962,47 @@ def main() -> int:
                     return;
                 }
             }
+        }
+
+        fn foo() -> int {
+            let f: float = "";
+            let arr: array<string, 4> = {"ccc", "", ""};
+            b[2] = "";
+            f[1] = 3;
+            arr[1] = 1;
+            arr[""] = "cena";
+            let boolean: bool = [1] + [];
+            let i: int = 1 - 1;
+            let t: int = "" - "";
+            let x: int = 1.0 - 3;
+            let y: int = 1.0 * 3;
+
+            let num_list: list<int> = [];
+            for(elem in [1,2,3,4,5]){
+                num_list = elem ^: elem;
+                num_list = num_list $: num_list;
+            }
+
+            if(1 && 2){ }
+
+            unless(2 || 4){
+            }
+
+            while(!"string"){
+            }
+
+            return arr___[1];
+            return f[1];
+            return arr[""];
+            return head(f);
+            return tail(f);
+
+            let another_list: list<string> = ["", 1];
+            let another_array: array<string, 2> = {"", 1};
+
+            do {
+                write(f);
+            } while(f != 1.0);
         }
 
         '''
