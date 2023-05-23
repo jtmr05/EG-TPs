@@ -2,5 +2,4 @@
 
 .PHONY: clean
 clean:
-	-rm -f *.html *.log .coverage
-	-rm -rf __pycache__
+	-rm -rf .coverage __pycache__ out/ *.log

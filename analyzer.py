@@ -1,161 +1,14 @@
-#!/usr/bin/env python3
-
 import lark
-import sys
 import enum
 import typing
 import io
 import textwrap
 
-import utils
+
+_Typename = typing.Union['_Type', tuple['_Type', ...], tuple['_Type', int]]  # à lá C++
 
 
-KEYWORDS: frozenset[str] = frozenset(
-    [
-        'fn', 'let', 'return', 'int', 'bool', 'string',
-        'float', 'tuple', 'array', 'list', 'read', 'write',
-        'if', 'else', 'elif', 'unless',
-        'case', 'of', 'default'
-        'while', 'for', 'do', 'in', 'head', 'tail'
-        'true', 'false'
-    ]
-)
-
-
-GRAMMAR: str = f'''
-unit           : construct*
-construct      : func_defn
-               | var_defn
-
-func_defn      : "fn" CONSTRUCT_ID func_params ("->" type)? "{{" instruction* "}}"
-func_params    : "(" (var_bind ("," var_bind)*)? ")"
-
-var_defn       : "let" var_bind "=" expression ";"
-
-var_bind       : CONSTRUCT_ID ":" type
-
-instruction    : var_defn
-               | ret
-               | write
-               | control_flow
-               | attrib
-               | func_call ";"
-
-ret            : "return" expression? ";"
-
-attrib         : CONSTRUCT_ID "=" expression ";"
-               | CONSTRUCT_ID "[" expression "]" "=" expression ";"
-
-type           : INT_T
-               | BOOL_T
-               | STRING_T
-               | FLOAT_T
-               | tuple_t
-               | array_t
-               | list_t
-
-INT_T          : "int"
-BOOL_T         : "bool"
-STRING_T       : "string"
-FLOAT_T        : "float"
-tuple_t        : "tuple" "<" type ("," type)+ ">"
-array_t        : "array" "<" type "," int_literal ">"
-list_t         : "list"  "<" type ">"
-
-expression     : prepend_expr
-               | append_expr
-               | or_expr
-               | and_expr
-               | eq_expr
-               | neq_expr
-               | plus_expr
-               | minus_expr
-               | mul_expr
-               | div_expr
-               | mod_expr
-               | exp_expr
-               | not_expr
-               | read
-               | head
-               | tail
-               | literal
-               | func_call
-               | var_deref
-               | paren_expr
-plus_expr      : expression "+" expression
-minus_expr     : expression "-" expression
-mul_expr       : expression "*" expression
-div_expr       : expression "/" expression
-mod_expr       : expression "%" expression
-exp_expr       : expression "^" expression
-prepend_expr   : expression "^:" expression
-append_expr    : expression "$:" expression
-eq_expr        : expression "==" expression
-neq_expr       : expression "!=" expression
-and_expr       : expression "&&" expression
-or_expr        : expression "||" expression
-not_expr       : "!" expression
-var_deref      : CONSTRUCT_ID "[" expression "]"
-               | CONSTRUCT_ID
-paren_expr     : "(" expression ")"
-func_call      : CONSTRUCT_ID "(" (expression ("," expression)*)? ")"
-
-
-control_flow   : branch_flow
-               | loop_flow
-
-branch_flow    : if_flow
-               | unless_flow
-               | case_flow
-if_flow        : "if" "(" expression ")" "{{" instruction* "}}" elif_flow* else_flow?
-elif_flow      : "elif" "(" expression ")" "{{" instruction* "}}"
-else_flow      : "else" "{{" instruction* "}}"
-unless_flow    : "unless" "(" expression ")" "{{" instruction* "}}"
-case_flow      : "case" "(" expression ")" "{{" of_flow* default_flow "}}"
-of_flow        : "of" "(" (int_literal|string_literal) ")" "{{" instruction* "}}"
-default_flow   : "default" "{{" instruction* "}}"
-
-
-loop_flow      : while_flow
-               | do_while_flow
-               | for_flow
-while_flow     : "while" "(" expression ")" "{{" instruction* "}}"
-do_while_flow  : "do" "{{" instruction* "}}" "while" "(" expression ")" ";"
-for_flow       : "for" "(" CONSTRUCT_ID "in" expression ")" "{{" instruction* "}}"
-
-
-read           : "read" "(" ")"
-write          : "write" "(" expression ("," expression)* ")" ";"
-
-head           : "head" "(" expression ")"
-tail           : "tail" "(" expression ")"
-
-CONSTRUCT_ID   : /\\b(?!({'|'.join(KEYWORDS)})\\b)[_A-Za-z][_A-Za-z0-9]*\\b/
-
-literal        : int_literal
-               | float_literal
-               | BOOL_LITERAL
-               | string_literal
-               | list_literal
-               | array_literal
-               | tuple_literal
-int_literal    : /-?[0-9]+/
-float_literal  : /-?[0-9]+\.[0-9]+/
-BOOL_LITERAL   : "true" | "false"
-string_literal : STRING
-list_literal   : "["  (expression ("," expression)*)? "]"
-array_literal  : "{{" (expression ("," expression)*)? "}}"
-tuple_literal  : "|"   expression ("," expression)+ "|"
-
-%import common.WS
-%import common.ESCAPED_STRING -> STRING
-%ignore WS
-'''
-
-Typename = typing.Union['Type', tuple['Type', ...], tuple['Type', int]]  # à lá C++
-
-
-class BaseType(enum.Enum):
+class _BaseType(enum.Enum):
     INT = 0
     BOOL = 1
     FLOAT = 2
@@ -167,42 +20,43 @@ class BaseType(enum.Enum):
     ANY = 8
 
     def __eq__(self, rhs: object):
-        if rhs is None or not isinstance(rhs, BaseType):
+        if rhs is None or not isinstance(rhs, _BaseType):
             return False
-        if self is rhs or self.value == BaseType.ANY or rhs.value == BaseType.ANY:
+        if self is rhs or self.value == _BaseType.ANY or rhs.value == _BaseType.ANY:
             return True
         return self.value == rhs.value
 
 
-class Type:
+class _Type:
 
-    base: BaseType
-    _typename: typing.Optional[Typename]
+    base: _BaseType
+    typename: typing.Optional[_Typename]
 
-    def __init__(self, bt: BaseType, tn: Typename = None):
+    def __init__(self, bt: _BaseType, tn: _Typename = None):
         self.base = bt
-        self._typename = tn
+        self.typename = tn
 
     def __eq__(self, rhs: object) -> bool:
-        if rhs is None or not isinstance(rhs, Type):
+        if rhs is None or not isinstance(rhs, _Type):
             return False
-        if self is rhs or self.base == BaseType.ANY or rhs.base == BaseType.ANY:
+        if self is rhs or self.base == _BaseType.ANY or rhs.base == _BaseType.ANY:
             return True
-        return self.base == rhs.base and self._typename == rhs._typename
+        return self.base == rhs.base and self.typename == rhs.typename
 
-    def is_param(self, t: 'Type') -> bool:
-        return self._typename == t
+    def is_param(self, t: '_Type') -> bool:
+        return self.typename == t
 
 
-class IplInterpreter(lark.visitors.Interpreter):
+class StaticAnalysisInterpreter(lark.visitors.Interpreter):
 
-    _vars: dict[str, Type]
-    _fns_params: dict[str, tuple[Type, ...]]
-    _fns_ret_types: dict[str, Type]
+    _vars: dict[str, _Type]
+    _fns_params: dict[str, tuple[_Type, ...]]
+    _fns_ret_types: dict[str, _Type]
     _curr_fn: typing.Optional[str]
     _num_of_vars_stack: list[int]
     _num_of_new_vars: int
     _err_string: typing.Optional[str]
+    _has_errors: bool
     _indent_str: str
     _html_buffer: io.StringIO
 
@@ -214,6 +68,7 @@ class IplInterpreter(lark.visitors.Interpreter):
         self._num_of_vars_stack = list()
         self._num_of_new_vars = 0
         self._err_string = None
+        self._has_errors = False
         self._indent_str = ''
         self._html_buffer = io.StringIO()
         self._html_buffer.write(
@@ -290,6 +145,7 @@ class IplInterpreter(lark.visitors.Interpreter):
     def _set_err_string(self, s: str):
         if self._err_string is None:
             self._err_string = s
+            self._has_errors = True
 
     def _flush_err_string(self, code: str):
         if self._err_string is not None:
@@ -299,7 +155,7 @@ class IplInterpreter(lark.visitors.Interpreter):
             self._html_buffer.write(f'{code}\n')
         self._err_string = None
 
-    def _add_var(self, var_id: str, var_type: Type):
+    def _add_var(self, var_id: str, var_type: _Type):
         if var_id not in self._vars:
             self._vars[var_id] = var_type
             self._num_of_new_vars += 1
@@ -315,6 +171,9 @@ class IplInterpreter(lark.visitors.Interpreter):
     def get_html(self) -> str:
         self._html_buffer.write('</pre></div></body></html>')
         return self._html_buffer.getvalue()
+
+    def has_errors(self) -> bool:
+        return self._has_errors
 
     #def unit(self, tree: lark.tree.Tree):
     #    for c in tree.children:
@@ -345,7 +204,7 @@ class IplInterpreter(lark.visitors.Interpreter):
             if self._curr_fn is not None:
                 self._fns_ret_types[tree.children[0]] = ret_type
         elif self._curr_fn is not None:
-            self._fns_ret_types[tree.children[0]] = Type(BaseType.VOID)
+            self._fns_ret_types[tree.children[0]] = _Type(_BaseType.VOID)
 
         self._flush_err_string(f'fn {tree.children[0]}{params_code}{type_code}{{')
 
@@ -353,12 +212,12 @@ class IplInterpreter(lark.visitors.Interpreter):
             self.visit(c)
 
         self._curr_fn = None
-        self._html_buffer.write('}\n')
+        self._html_buffer.write('}\n\n')
         self._end_scope()
 
-    def func_params(self, tree: lark.tree.Tree) -> tuple[tuple[Type, ...], str]:
+    def func_params(self, tree: lark.tree.Tree) -> tuple[tuple[_Type, ...], str]:
         code_strs: list[str] = list()
-        param_types: list[Type] = list()
+        param_types: list[_Type] = list()
 
         for c in tree.children:
             var_id, var_type, bind_code = self.visit(c)
@@ -378,7 +237,7 @@ class IplInterpreter(lark.visitors.Interpreter):
 
         self._flush_err_string(f"{self._indent_str}let {bind_code} = {expr_code};")
 
-    def var_bind(self, tree: lark.tree.Tree) -> tuple[str, Type, str]:
+    def var_bind(self, tree: lark.tree.Tree) -> tuple[str, _Type, str]:
         tn, code = self.visit(tree.children[1])
         return tree.children[0], tn, f"{tree.children[0]}: {code}"
 
@@ -396,7 +255,7 @@ class IplInterpreter(lark.visitors.Interpreter):
         else:
             if (
                 self._curr_fn is not None
-                and BaseType.VOID != self._fns_ret_types.get(self._curr_fn).base
+                and _BaseType.VOID != self._fns_ret_types.get(self._curr_fn).base
             ):
                 self._set_err_string('Mismatched types in return statement')
 
@@ -404,34 +263,34 @@ class IplInterpreter(lark.visitors.Interpreter):
 
     def attrib(self, tree: lark.tree.Tree):
         var: str = tree.children[0]
-        value_tn, value_code = self.visit(tree.children[-1])
+        expr_tn, expr_code = self.visit(tree.children[-1])
 
         if len(tree.children) == 2:
             if var not in self._vars:
                 self._set_err_string('Variable not in scope')
-            elif value_tn != self._vars.get(var):
+            elif expr_tn != self._vars.get(var):
                 self._set_err_string('Mismatched types in assignment')
-            self._flush_err_string(f'{self._indent_str}{var} = {value_code};')
+            self._flush_err_string(f'{self._indent_str}{var} = {expr_code};')
         else:
             ind_tn, ind_code = self.visit(tree.children[1])
             if var not in self._vars:
                 self._set_err_string('Variable not in scope')
-            elif self._vars.get(var).base != BaseType.ARRAY:
+            elif self._vars.get(var).base != _BaseType.ARRAY:
                 self._set_err_string('Type of lhs operand for operator [] must be array')
-            elif value_tn != self._vars.get(var)._typename[0]:
+            elif expr_tn != self._vars.get(var).typename[0]:
                 self._set_err_string('Mismatched types in assignment')
-            elif ind_tn.base != BaseType.INT:
+            elif ind_tn.base != _BaseType.INT:
                 self._set_err_string('Type of rhs operand for operator [] must be int')
-            self._flush_err_string(f'{self._indent_str}{var}[{ind_code}] = {value_code};')
+            self._flush_err_string(f'{self._indent_str}{var}[{ind_code}] = {expr_code};')
 
-    def type(self, tree: lark.tree.Tree) -> (Type, str):
+    def type(self, tree: lark.tree.Tree) -> (_Type, str):
         if isinstance(tree.children[0], lark.lexer.Token):  # primitive type
-            return Type(BaseType[tree.children[0].upper()]), tree.children[0]
+            return _Type(_BaseType[tree.children[0].upper()]), tree.children[0]
         else:
             return self.visit(tree.children[0])
 
-    def tuple_t(self, tree: lark.tree.Tree) -> (Type, str):
-        typenames: list[Type] = list()
+    def tuple_t(self, tree: lark.tree.Tree) -> (_Type, str):
+        typenames: list[_Type] = list()
         code_strs: list[str] = list()
         for c in tree.children:
             tn, code = self.visit(c)
@@ -439,83 +298,82 @@ class IplInterpreter(lark.visitors.Interpreter):
             code_strs.append(code)
 
         return (
-            Type(BaseType.TUPLE, tuple(typenames)),
+            _Type(_BaseType.TUPLE, tuple(typenames)),
             f"tuple&lt;{', '.join(code_strs)}&gt;"
         )
 
-    def array_t(self, tree: lark.tree.Tree) -> (Type, str):
+    def array_t(self, tree: lark.tree.Tree) -> (_Type, str):
         tn, code = self.visit(tree.children[0])
         _, size = self.visit(tree.children[1])
-        return Type(BaseType.ARRAY, (tn, int(size))), f"array&lt;{code}, {size}&gt;"
+        return _Type(_BaseType.ARRAY, (tn, int(size))), f"array&lt;{code}, {size}&gt;"
 
-    def list_t(self, tree: lark.tree.Tree) -> (Type, str):
+    def list_t(self, tree: lark.tree.Tree) -> (_Type, str):
         tn, code = self.visit(tree.children[0])
-        return Type(BaseType.LIST, tn), f"list&lt;{code}&gt;"
+        return _Type(_BaseType.LIST, tn), f"list&lt;{code}&gt;"
 
-    def expression(self, tree: lark.tree.Tree) -> (Type, str):
-        if isinstance(tree.children[0], lark.tree.Tree):
-            return self.visit(tree.children[0])
+    def expression(self, tree: lark.tree.Tree) -> (_Type, str):
+        return self.visit(tree.children[0])
 
-    def plus_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def plus_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
         if tn_lhs != tn_rhs:
             self._set_err_string('Type of operands for operator + must be the same')
         elif (
-            tn_lhs.base != BaseType.FLOAT
-            and tn_lhs.base != BaseType.INT
-            and tn_lhs.base != BaseType.STRING
+            tn_lhs.base != _BaseType.FLOAT
+            and tn_lhs.base != _BaseType.INT
+            and tn_lhs.base != _BaseType.STRING
         ):
             self._set_err_string('Type of operands for operator + must be int, float or string')
         return tn_lhs, f"{code_lhs} + {code_rhs}"
 
-    def minus_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def minus_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
         if tn_lhs != tn_rhs:
             self._set_err_string('Type of operands for operator - must be the same')
-        elif tn_lhs.base != BaseType.FLOAT and tn_lhs.base != BaseType.INT:
+        elif tn_lhs.base != _BaseType.FLOAT and tn_lhs.base != _BaseType.INT:
             self._set_err_string('Type of operands for operator - must be int or float')
         return tn_lhs, f"{code_lhs} - {code_rhs}"
 
-    def mul_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def mul_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
         if tn_lhs != tn_rhs:
             self._set_err_string('Type of operands for operator * must be the same')
-        elif tn_lhs.base != BaseType.FLOAT and tn_lhs.base != BaseType.INT:
+        elif tn_lhs.base != _BaseType.FLOAT and tn_lhs.base != _BaseType.INT:
             self._set_err_string('Type of operands for operator * must be int or float')
         return tn_lhs, f"{code_lhs} * {code_rhs}"
 
-    def div_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def div_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
         if tn_lhs != tn_rhs:
             self._set_err_string('Type of operands for operator / must be the same')
-        elif tn_lhs.base != BaseType.FLOAT and tn_lhs.base != BaseType.INT:
+        elif tn_lhs.base != _BaseType.FLOAT and tn_lhs.base != _BaseType.INT:
             self._set_err_string('Type of operands for operator / must be int or float')
         return tn_lhs, f"{code_lhs} / {code_rhs}"
 
-    def mod_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def mod_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
-        if tn_lhs.base != BaseType.INT or tn_rhs.base != BaseType.INT:
+        if tn_lhs.base != _BaseType.INT or tn_rhs.base != _BaseType.INT:
             self._set_err_string('Type of operands for operator % must be int')
-        return Type(BaseType.INT), f"{code_lhs} % {code_rhs}"
+        return _Type(_BaseType.INT), f"{code_lhs} % {code_rhs}"
 
-    def exp_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def exp_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
         if tn_lhs != tn_rhs:
             self._set_err_string('Type of operands for operator ^ must be the same')
-        elif tn_lhs.base != BaseType.FLOAT and tn_lhs.base != BaseType.INT:
+        elif tn_lhs.base != _BaseType.FLOAT and tn_lhs.base != _BaseType.INT:
             self._set_err_string('Type of operands for operator ^ must be int or float')
         return tn_lhs, f"{code_lhs} ^ {code_rhs}"
 
-    def prepend_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def prepend_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
-        if tn_rhs.base != BaseType.LIST:
+        if tn_rhs.base != _BaseType.LIST:
             self._set_err_string('Type of rhs operand for operator ^: must be list')
         elif not tn_rhs.is_param(tn_lhs):
             self._set_err_string(
@@ -523,10 +381,10 @@ class IplInterpreter(lark.visitors.Interpreter):
             )
         return tn_rhs, f"{code_lhs} ^: {code_rhs}"
 
-    def append_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def append_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
-        if tn_rhs.base != BaseType.LIST:
+        if tn_rhs.base != _BaseType.LIST:
             self._set_err_string('Type of rhs operand for operator $: must be list')
         elif not tn_rhs.is_param(tn_lhs):
             self._set_err_string(
@@ -534,69 +392,69 @@ class IplInterpreter(lark.visitors.Interpreter):
             )
         return tn_rhs, f"{code_lhs} $: {code_rhs}"
 
-    def eq_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def eq_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
         if tn_lhs != tn_rhs:
             self._set_err_string('Type of operands for operator == must be the same')
-        return Type(BaseType.BOOL), f"{code_lhs} == {code_rhs}"
+        return _Type(_BaseType.BOOL), f"{code_lhs} == {code_rhs}"
 
-    def neq_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def neq_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
         if tn_lhs != tn_rhs:
             self._set_err_string('Type of operands for operator != must be the same')
-        return Type(BaseType.BOOL), f"{code_lhs} != {code_rhs}"
+        return _Type(_BaseType.BOOL), f"{code_lhs} != {code_rhs}"
 
-    def and_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def and_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
-        if tn_lhs.base != BaseType.BOOL or tn_rhs.base != BaseType.BOOL:
+        if tn_lhs.base != _BaseType.BOOL or tn_rhs.base != _BaseType.BOOL:
             self._set_err_string('Type of operands for operator &amp;&amp; must be bool')
-        return Type(BaseType.BOOL), f"{code_lhs} &amp;&amp; {code_rhs}"
+        return _Type(_BaseType.BOOL), f"{code_lhs} &amp;&amp; {code_rhs}"
 
-    def or_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def or_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn_lhs, code_lhs = self.visit(tree.children[0])
         tn_rhs, code_rhs = self.visit(tree.children[1])
-        if tn_lhs.base != BaseType.BOOL or tn_rhs.base != BaseType.BOOL:
+        if tn_lhs.base != _BaseType.BOOL or tn_rhs.base != _BaseType.BOOL:
             self._set_err_string('Type of operands for operator || must be bool')
-        return Type(BaseType.BOOL), f"{code_lhs} || {code_rhs}"
+        return _Type(_BaseType.BOOL), f"{code_lhs} || {code_rhs}"
 
-    def not_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def not_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn, code = self.visit(tree.children[0])
-        if tn.base != BaseType.BOOL:
+        if tn.base != _BaseType.BOOL:
             self._set_err_string('Type of operand for operator ! must be bool')
-        return Type(BaseType.BOOL), f"!{code}"
+        return _Type(_BaseType.BOOL), f"!{code}"
 
-    def paren_expr(self, tree: lark.tree.Tree) -> (Type, str):
+    def paren_expr(self, tree: lark.tree.Tree) -> (_Type, str):
         tn, code = self.visit(tree.children[0])
         return tn, f"({code})"
 
-    def var_deref(self, tree: lark.tree.Tree) -> (Type, str):
+    def var_deref(self, tree: lark.tree.Tree) -> (_Type, str):
 
         if len(tree.children) == 2:
             tn, code = self.visit(tree.children[1])
 
             if tree.children[0] not in self._vars:
                 self._set_err_string('Variable not in scope')
-                return Type(BaseType.ANY), f"{tree.children[0]}[{code}]"
-            elif self._vars.get(tree.children[0]).base != BaseType.ARRAY:
+                return _Type(_BaseType.ANY), f"{tree.children[0]}[{code}]"
+            elif self._vars.get(tree.children[0]).base != _BaseType.ARRAY:
                 self._set_err_string('Type of lhs operand for operator [] must be array')
-            elif tn.base != BaseType.INT:
+            elif tn.base != _BaseType.INT:
                 self._set_err_string('Type of rhs operand for operator [] must be int')
             return self._vars.get(tree.children[0]), f"{tree.children[0]}[{code}]"
         else:
             if tree.children[0] not in self._vars:
                 self._set_err_string('Variable not in scope')
-                return Type(BaseType.ANY), tree.children[0]
+                return _Type(_BaseType.ANY), tree.children[0]
             else:
                 return self._vars.get(tree.children[0]), tree.children[0]
 
     def func_call(self, tree: lark.tree.Tree) -> str:
-        expr_type: Type = Type(BaseType.ANY)
+        expr_type: _Type = _Type(_BaseType.ANY)
 
         code_strs: list[str] = list()
-        arg_types: list[Type] = list()
+        arg_types: list[_Type] = list()
         for c in tree.children[1:]:
             tn, code = self.visit(c)
             code_strs.append(code)
@@ -625,14 +483,14 @@ class IplInterpreter(lark.visitors.Interpreter):
     def if_flow(self, tree: lark.tree.Tree):
 
         tn, code = self.visit(tree.children[0])
-        if tn.base != BaseType.BOOL:
+        if tn.base != _BaseType.BOOL:
             self._set_err_string('Type of condition expression must be bool')
 
         self._flush_err_string(f'{self._indent_str}if({code}){{')
 
         self._new_scope()
         end_ind: int = 1
-        for _, c in enumerate(tree.children[1:]):
+        for c in tree.children[1:]:
             if c.data != 'instruction':
                 break
             end_ind += 1
@@ -646,7 +504,7 @@ class IplInterpreter(lark.visitors.Interpreter):
     def elif_flow(self, tree: lark.tree.Tree):
 
         tn, code = self.visit(tree.children[0])
-        if tn.base != BaseType.BOOL:
+        if tn.base != _BaseType.BOOL:
             self._set_err_string('Type of condition expression must be bool')
 
         self._flush_err_string(f'{self._indent_str}elif({code}){{')
@@ -671,7 +529,7 @@ class IplInterpreter(lark.visitors.Interpreter):
     def unless_flow(self, tree: lark.tree.Tree):
 
         tn, code = self.visit(tree.children[0])
-        if tn.base != BaseType.BOOL:
+        if tn.base != _BaseType.BOOL:
             self._set_err_string('Type of condition expression must be bool')
 
         self._flush_err_string(f'{self._indent_str}unless({code}){{')
@@ -686,7 +544,7 @@ class IplInterpreter(lark.visitors.Interpreter):
     def case_flow(self, tree: lark.tree.Tree):
 
         tn, code = self.visit(tree.children[0])
-        if tn.base != BaseType.INT and tn.base != BaseType.STRING:
+        if tn.base != _BaseType.INT and tn.base != _BaseType.STRING:
             self._set_err_string('Type of case expression must be int or string')
 
         self._flush_err_string(f'{self._indent_str}case({code}){{')
@@ -726,7 +584,7 @@ class IplInterpreter(lark.visitors.Interpreter):
     def while_flow(self, tree: lark.tree.Tree):
 
         tn, code = self.visit(tree.children[0])
-        if tn.base != BaseType.BOOL:
+        if tn.base != _BaseType.BOOL:
             self._set_err_string('Type of condition expression must be bool')
 
         self._flush_err_string(f'{self._indent_str}while({code}){{')
@@ -747,7 +605,7 @@ class IplInterpreter(lark.visitors.Interpreter):
             self.visit(c)
 
         tn, code = self.visit(tree.children[-1])
-        if tn.base != BaseType.BOOL:
+        if tn.base != _BaseType.BOOL:
             self._set_err_string('Type of condition expression must be bool')
 
         self._end_scope()
@@ -757,10 +615,10 @@ class IplInterpreter(lark.visitors.Interpreter):
         self._new_scope()
 
         tn, code = self.visit(tree.children[1])
-        if tn.base == BaseType.ARRAY:
-            self._add_var(tree.children[0], tn._typename[0])
-        elif tn.base == BaseType.LIST:
-            self._add_var(tree.children[0], tn._typename)
+        if tn.base == _BaseType.ARRAY:
+            self._add_var(tree.children[0], tn.typename[0])
+        elif tn.base == _BaseType.LIST:
+            self._add_var(tree.children[0], tn.typename)
         else:
             self._set_err_string('Type of expression must iterable')
 
@@ -772,8 +630,8 @@ class IplInterpreter(lark.visitors.Interpreter):
         self._end_scope()
         self._html_buffer.write(f'{self._indent_str}}}\n')
 
-    def read(self, tree: lark.tree.Tree) -> (Type, str):
-        return Type(BaseType.ANY), 'read()'
+    def read(self, tree: lark.tree.Tree) -> (_Type, str):
+        return _Type(_BaseType.ANY), 'read()'
 
     def write(self, tree: lark.tree.Tree):
         code_strs: list[str] = list()
@@ -784,36 +642,36 @@ class IplInterpreter(lark.visitors.Interpreter):
             f"{self._indent_str}write({', '.join(code_strs)});"
         )
 
-    def head(self, tree: lark.tree.Tree) -> (Type, str):
+    def head(self, tree: lark.tree.Tree) -> (_Type, str):
         tn, code = self.visit(tree.children[0])
-        if tn.base != BaseType.LIST:
+        if tn.base != _BaseType.LIST:
             self._set_err_string('head() operations can be only be used on lists')
-        return tn._typename, f"head({code})"
+        return tn.typename, f"head({code})"
 
-    def tail(self, tree: lark.tree.Tree) -> (Type, str):
+    def tail(self, tree: lark.tree.Tree) -> (_Type, str):
         tn, code = self.visit(tree.children[0])
-        if tn.base != BaseType.LIST:
+        if tn.base != _BaseType.LIST:
             self._set_err_string('tail() operations can be only be used on lists')
         return tn, f"tail({code})"
 
-    def literal(self, tree: lark.tree.Tree) -> (Type, str):
+    def literal(self, tree: lark.tree.Tree) -> (_Type, str):
         if isinstance(tree.children[0], lark.tree.Tree):
             return self.visit(tree.children[0])
         else:
-            return Type(BaseType.BOOL), tree.children[0]
+            return _Type(_BaseType.BOOL), tree.children[0]
 
-    def int_literal(self, tree: lark.tree.Tree) -> (Type, str):
-        return Type(BaseType.INT), tree.children[0]
+    def int_literal(self, tree: lark.tree.Tree) -> (_Type, str):
+        return _Type(_BaseType.INT), tree.children[0]
 
-    def string_literal(self, tree: lark.tree.Tree) -> (Type, str):
-        return Type(BaseType.STRING), tree.children[0]
+    def string_literal(self, tree: lark.tree.Tree) -> (_Type, str):
+        return _Type(_BaseType.STRING), tree.children[0]
 
-    def float_literal(self, tree: lark.tree.Tree) -> (Type, str):
-        return Type(BaseType.FLOAT), tree.children[0]
+    def float_literal(self, tree: lark.tree.Tree) -> (_Type, str):
+        return _Type(_BaseType.FLOAT), tree.children[0]
 
-    def list_literal(self, tree: lark.tree.Tree) -> (Type, str):
+    def list_literal(self, tree: lark.tree.Tree) -> (_Type, str):
         if len(tree.children) == 0:
-            return Type(BaseType.ANY), '[]'
+            return _Type(_BaseType.ANY), '[]'
 
         tn0, code0 = self.visit(tree.children[0])
         code_strs: list[str] = list()
@@ -826,13 +684,13 @@ class IplInterpreter(lark.visitors.Interpreter):
                 self._set_err_string('Lists must have homogeneous types')
 
         return (
-            Type(BaseType.LIST, tn0),
+            _Type(_BaseType.LIST, tn0),
             f"[{', '.join(code_strs)}]"
         )
 
-    def array_literal(self, tree: lark.tree.Tree) -> (Type, str):
+    def array_literal(self, tree: lark.tree.Tree) -> (_Type, str):
         if len(tree.children) == 0:
-            return Type(BaseType.ANY), r'{}'
+            return _Type(_BaseType.ANY), r'{}'
 
         tn0, code0 = self.visit(tree.children[0])
         code_strs: list[str] = list()
@@ -845,12 +703,12 @@ class IplInterpreter(lark.visitors.Interpreter):
                 self._set_err_string('Arrays must have homogeneous types')
 
         return (
-            Type(BaseType.ARRAY, (tn0, len(tree.children))),
+            _Type(_BaseType.ARRAY, (tn0, len(tree.children))),
             f"{{{', '.join(code_strs)}}}"
         )
 
-    def tuple_literal(self, tree: lark.tree.Tree) -> (Type, str):
-        typenames: list[Type] = list()
+    def tuple_literal(self, tree: lark.tree.Tree) -> (_Type, str):
+        typenames: list[_Type] = list()
         code_strs: list[str] = list()
         for c in tree.children:
             tn, code = self.visit(c)
@@ -858,186 +716,6 @@ class IplInterpreter(lark.visitors.Interpreter):
             code_strs.append(code)
 
         return (
-            Type(BaseType.TUPLE, tuple(typenames)),
+            _Type(_BaseType.TUPLE, tuple(typenames)),
             f"|{', '.join(code_strs)}|"
         )
-
-
-def main() -> int:
-
-    tests: list[str] = [
-        '''
-        let y: bool = true;
-
-        fn foo(var: int, baz: string) -> list<int> {
-            let x: float = 3.0;
-            return 3 $: [1];
-            bar();
-            unless(x == 4.0){
-                return false;
-            }
-
-            if(true != false){
-                if(true){
-                }
-            }
-            elif(1 + 1){ }
-            else { }
-            x = 4.5;
-        }
-
-        fn bar() -> tuple<int, int> {
-            let i: array<int, 4> = {};
-            case(1+1){
-                of(1){ }
-                of(2){ }
-                default { }
-            }
-
-            while(true){ }
-
-            for(a in [1,2,3]){ write("\\n"); }
-
-            return |1+1, 2.0+2|;
-        }
-        ''',
-
-        '''
-        let y: bool = true;
-
-        fn foo() {
-            let x: float = 3.0;
-            let b: bool = true;
-
-            if(x){
-                let a: string = "example";
-            }
-            elif(x == b){
-                let a: string = "another one";
-            }
-
-            while(k == u){
-                let h: float = 1.0;
-            }
-        }
-
-        fn bar() {
-
-        }
-        ''',
-
-        '''
-        let foo: string = "cena\\"1\\"";
-        fn bar(a: int) -> float {
-            let f: string = foo + "\\n";
-            return (1.0 * 2.0);
-        }
-        fn foo() -> tuple<array<string, 4>, bool> {
-            let b: float = bar(1+2*3^4);
-            let c: float = bar(1+2*3^4, "foo");
-            let d: float = bar("foo");
-            let d: float = 1.0;
-            e = 12;
-
-            let input: string = "";
-            let inputs: array<string, 4> = {};
-            for(a in {0,1,2}){
-                let line: string = read();
-                inputs[a] = line;
-            }
-            write(inputs, b, c, (1+2+3)*4 % 5, bar(-1));
-            return |inputs, false|;
-        }
-        fn baz() -> int {
-            let i: int = 0;
-            let l: list<int> = [1,2,3,4,5,6,7];
-            let s: list<string> = [];
-            while(i != 5){
-                i = i + 1;
-                let h: int = head(l);
-                write(h);
-                l = tail(l);
-                s = l;
-                unless(h % 2 == 0){
-                    return;
-                }
-            }
-        }
-
-        fn foo() -> int {
-            let f: float = "";
-            let arr: array<string, 4> = {"ccc", "", ""};
-            b[2] = "";
-            f[1] = 3;
-            arr[1] = 1;
-            arr[""] = "cena";
-            let boolean: bool = [1] + [];
-            let i: int = 1 - 1;
-            let t: int = "" - "";
-            let x: int = 1.0 - 3;
-            let y: int = 1.0 * 3;
-
-            let num_list: list<int> = [];
-            for(elem in [1,2,3,4,5]){
-                num_list = elem ^: elem;
-                num_list = num_list $: num_list;
-            }
-
-            if(1 && 2){ }
-
-            unless(2 || 4){
-            }
-
-            while(!"string"){
-            }
-
-            return arr___[1];
-            return f[1];
-            return arr[""];
-            return head(f);
-            return tail(f);
-
-            let another_list: list<string> = ["", 1];
-            let another_array: array<string, 2> = {"", 1};
-
-            do {
-                write(f);
-            } while(f != 1.0);
-        }
-
-        '''
-    ]
-
-    parser: lark.Lark = lark.Lark(GRAMMAR, start='unit')
-
-    with open('ipl_log.log', 'w') as log:
-        for ind, t in enumerate(tests):
-
-            try:
-                tree: lark.ParseTree = parser.parse(t)
-                interpreter: IplInterpreter = IplInterpreter()
-                interpreter.transform(tree)
-
-                #print(tree.pretty())
-                with open(f'output_test{ind + 1}.html', 'w') as fh:
-                    fh.write(interpreter.get_html())
-
-                print(
-                    f"==> test '{utils.annotate(t, 1)}' {utils.annotate('passed', 32, 1)}!",
-                    file=sys.stderr
-                )
-
-            except (lark.UnexpectedCharacters, lark.GrammarError) as e:
-                print(
-                    f"==> test '{utils.annotate(t, 1)}' {utils.annotate('failed', 31, 1)}!",
-                    file=sys.stderr
-                )
-                log.write(f'test {ind + 1}: {str(e)}')
-
-            print("\n")
-
-    return 0
-
-
-if __name__ == '__main__':
-    sys.exit(main())
