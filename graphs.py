@@ -415,16 +415,21 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._add_node(this_id, f'while({code})', 'diamond')
         self._add_edge(this_id)
         self._parent_id = this_id
+        self._edge_color = 'green'
 
         for c in tree.children[1:]:
             self.visit(c)
 
+        self._add_edge(this_id)
+
         dummy_id: int = self._next_id()
         self._add_node(dummy_id, '&lt;end while&gt;', 'diamond', 'gray')
+        self._parent_id = this_id
+        self._edge_color = 'red'
         self._add_edge(dummy_id)
 
+        self._edge_color = None
         self._parent_id = dummy_id
-        self._add_edge(this_id)
 
     def do_while_flow(self, tree: lark.tree.Tree):
         dummy_id: int = self._next_id()
@@ -442,7 +447,10 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._add_node(this_id, f'while({code})', 'diamond')
         self._add_edge(this_id)
         self._parent_id = this_id
+        self._edge_color = 'green'
         self._add_edge(dummy_id)
+
+        self._edge_color = 'red'
 
     def for_flow(self, tree: lark.tree.Tree):
         code = self.visit(tree.children[1])
@@ -451,16 +459,21 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._add_node(this_id, f'for({tree.children[0]} in {code})', 'diamond')
         self._add_edge(this_id)
         self._parent_id = this_id
+        self._edge_color = 'green'
 
         for c in tree.children[1:]:
             self.visit(c)
 
+        self._add_edge(this_id)
+
         dummy_id: int = self._next_id()
         self._add_node(dummy_id, '&lt;end for&gt;', 'diamond', 'gray')
+        self._parent_id = this_id
+        self._edge_color = 'red'
         self._add_edge(dummy_id)
 
+        self._edge_color = None
         self._parent_id = dummy_id
-        self._add_edge(this_id)
 
     def read(self, tree: lark.tree.Tree) -> str:
         return 'read()'

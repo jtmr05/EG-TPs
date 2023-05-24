@@ -25,8 +25,8 @@ fn foo(var: int, baz: string) {
 
 fn bar() -> tuple<list<int>, int> {
 
-
     let count: int = 39489;
+
     while(count != 0){
         count = count / 2;
         if(count % 2 != 0){
@@ -61,6 +61,7 @@ fn bar() -> tuple<list<int>, int> {
 
     for(a in i){
         a = a * read();
+        a = 1;
     }
 
     return |i, x|;
