@@ -131,7 +131,7 @@ float_literal  : /-?[0-9]+\.[0-9]+/
 BOOL_LITERAL   : "true" | "false"
 string_literal : STRING
 list_literal   : "["  (expression ("," expression)*)? "]"
-array_literal  : "{{" (expression ("," expression)*)? "}}"
+array_literal  : "{{"  expression ("," expression)* "}}"
 tuple_literal  : "|"   expression ("," expression)+ "|"
 
 %import common.WS

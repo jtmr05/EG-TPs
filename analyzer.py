@@ -671,7 +671,7 @@ class StaticAnalysisInterpreter(lark.visitors.Interpreter):
 
     def list_literal(self, tree: lark.tree.Tree) -> (_Type, str):
         if len(tree.children) == 0:
-            return _Type(_BaseType.ANY), '[]'
+            return _Type(_BaseType.LIST, _Type(_BaseType.ANY)), '[]'
 
         tn0, code0 = self.visit(tree.children[0])
         code_strs: list[str] = list()
@@ -689,9 +689,6 @@ class StaticAnalysisInterpreter(lark.visitors.Interpreter):
         )
 
     def array_literal(self, tree: lark.tree.Tree) -> (_Type, str):
-        if len(tree.children) == 0:
-            return _Type(_BaseType.ANY), r'{}'
-
         tn0, code0 = self.visit(tree.children[0])
         code_strs: list[str] = list()
         code_strs.append(code0)

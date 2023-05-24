@@ -22,17 +22,34 @@ fn foo(var: int, baz: string) {
     let n: string = "";
 }
 
-fn bar() -> tuple<int, float> {
-    let i: array<int, 4> = {};
-    case(1+1){
-        of(1){ }
-        of(2){ }
-        default { }
+fn bar() -> tuple<list<int>, int> {
+
+
+    let count: int = 39489;
+    while(count != 0){
+        count = count / 2;
+        if(count % 2 != 0){
+            count = count - 1;
+        }
+        write(count);
     }
 
-    while(true){ }
+    let i: list<int> = [];
+    let x: int = 0;
+    let j: int = 2;
+    do {
+        j = j ^ 2;
+        unless(j % 10 == 0){
+            i = j $: i;
+        }
+        x = x + 1;
+    }
+    while(x != 100);
 
-    for(a in [1,2,3]){ write("\n"); }
 
-    return |1+1, 2.0+2.0|;
+    for(a in i){
+        a = a * read();
+    }
+
+    return |i, x|;
 }
