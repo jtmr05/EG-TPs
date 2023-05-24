@@ -17,6 +17,7 @@ fn foo(var: int, baz: string) {
         }
     }
     else {
+        write("foo");
     }
 
     let n: string = "";
@@ -30,6 +31,17 @@ fn bar() -> tuple<list<int>, int> {
         count = count / 2;
         if(count % 2 != 0){
             count = count - 1;
+        }
+        elif(count % 3 != 0){
+            count = count + 2;
+        }
+        elif(count % 4 != 0){
+            count = count + 3 ^ 800;
+            count = read() * count;
+        }
+        else {
+            count = count * 3;
+            let x: tuple<string, int> = |"foo", count|;
         }
         write(count);
     }

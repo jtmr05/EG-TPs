@@ -1,6 +1,5 @@
 import lark
 import typing
-#import io
 import pydot
 
 
@@ -10,13 +9,15 @@ class GraphInterpreter(lark.visitors.Interpreter):
     _parent_id: typing.Optional[int]
     _edge_color: typing.Optional[str]
     _is_fn_scope: bool
-    _graph: pydot.Dot
+    _fn_to_graph: dict[str, pydot.Dot]
+    _curr_fn: str
 
     def __init__(self):
         self._node_id = 0
         self._parent_id = None
         self._is_fn_scope = False
-        self._graph = pydot.Dot('F', graph_type='digraph')
+        self._fn_to_graph = dict()
+        self._curr_fn = ''
 
     def _next_id(self):
         self._node_id += 1
@@ -38,7 +39,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
                 label=label,
                 shape=shape
             )
-        self._graph.add_node(node)
+        self._fn_to_graph[self._curr_fn].add_node(node)
 
     def _add_edge(self, child_id: str):
         edge: pydot.Edge = None
@@ -53,10 +54,16 @@ class GraphInterpreter(lark.visitors.Interpreter):
                 f'node{self._parent_id}',
                 f'node{child_id}'
             )
-        self._graph.add_edge(edge)
+        self._fn_to_graph[self._curr_fn].add_edge(edge)
 
-    def get_dot_str(self) -> str:
-        return self._graph.to_string()
+    def get_func_name_graph_pairs(self) -> list[tuple[str, pydot.Dot]]:
+        return list(self._fn_to_graph.items())
+
+    def _compute_mccabes_complexity(self) -> int:
+        graph: pydot.Dot = self._fn_to_graph[self._curr_fn]
+        nodes: list[pydot.Node] = graph.get_nodes()
+        edges: list[pydot.Edge] = graph.get_edges()
+        return len(edges) - len(nodes) + 2
 
     #def unit(self, tree: lark.tree.Tree):
     #    for c in tree.children:
@@ -68,6 +75,8 @@ class GraphInterpreter(lark.visitors.Interpreter):
 
     def func_defn(self, tree: lark.tree.Tree):
 
+        self._curr_fn = tree.children[0]
+        self._fn_to_graph[self._curr_fn] = pydot.Dot('F', graph_type='digraph')
         self._is_fn_scope = True
 
         params_code = self.visit(tree.children[1])
@@ -90,6 +99,9 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._add_node(dummy_id, '&lt;end fn&gt;', 'diamond', 'gray')
         self._add_edge(dummy_id)
         self._is_fn_scope = False
+
+        mccabe_complexity: int = self._compute_mccabes_complexity()
+        self._add_node('complex', f"McCabe's complexity: {mccabe_complexity}", 'plaintext')
 
     def func_params(self, tree: lark.tree.Tree) -> str:
         code_strs: list[str] = list()
@@ -268,7 +280,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self.visit(tree.children[0])
 
     def if_flow(self, tree: lark.tree.Tree):
-        code = self.visit(tree.children[0])
+        code: str = self.visit(tree.children[0])
 
         this_id: int = self._next_id()
         self._add_node(this_id, f'if({code})', 'diamond')
@@ -289,10 +301,15 @@ class GraphInterpreter(lark.visitors.Interpreter):
 
         # elif, else
         if end_ind < len(tree.children):
-            for c in tree.children[end_ind:]:
+            self._edge_color = 'red'
+            self._parent_id = this_id
+            elif_id: int = self.visit(tree.children[end_ind])
+            self._add_edge(dummy_id)
+
+            for c in tree.children[end_ind + 1:]:
                 self._edge_color = 'red'
-                self._parent_id = this_id
-                self.visit(c)
+                self._parent_id = elif_id
+                elif_id = self.visit(c)
                 self._add_edge(dummy_id)
         else:
             self._edge_color = 'red'
@@ -302,20 +319,24 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._edge_color = None
         self._parent_id = dummy_id
 
-    def elif_flow(self, tree: lark.tree.Tree):
-        return
-        code = self.visit(tree.children[0])
+    def elif_flow(self, tree: lark.tree.Tree) -> int:
+        code: str = self.visit(tree.children[0])
 
-        self._flush_err_string(f'elif({code}){{')
+        this_id: int = self._next_id()
+        self._add_node(this_id, f'elif({code})', 'diamond')
+        self._add_edge(this_id)
+        self._parent_id = this_id
+        self._edge_color = 'green'
 
         for c in tree.children[1:]:
             self.visit(c)
 
-        self._html_buffer.write('}\n')
+        return this_id
 
     def else_flow(self, tree: lark.tree.Tree):
         for c in tree.children:
             self.visit(c)
+            self._edge_color = None
 
     def unless_flow(self, tree: lark.tree.Tree):
         code = self.visit(tree.children[0])
@@ -453,6 +474,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
         this_id: int = self._next_id()
         self._add_node(this_id, f"write({', '.join(code_strs)})", 'rectangle')
         self._add_edge(this_id)
+        self._edge_color = None
         self._parent_id = this_id
 
     def head(self, tree: lark.tree.Tree) -> str:

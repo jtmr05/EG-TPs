@@ -58,13 +58,13 @@ def main() -> int:
                 graph_generator: GraphInterpreter = GraphInterpreter()
                 graph_generator.transform(tree)
 
-                dot_fn: str = os.path.join(out_dir, f'graph_test{ind + 1}.gv')
-                dot_str: str = graph_generator.get_dot_str()
-                with open(dot_fn, 'w') as dot_fh:
-                    dot_fh.write(dot_str)
+                pairs: list[tuple[str, pydot.Dot]] = graph_generator.get_func_name_graph_pairs()
+                for func_name, graph in pairs:
+                    dot_fn: str = os.path.join(out_dir, f'graph_test{ind + 1}_{func_name}.gv')
+                    with open(dot_fn, 'w') as dot_fh:
+                        dot_fh.write(graph.to_string())
 
-                graph: pydot.Dot = pydot.graph_from_dot_data(dot_str)[0]
-                graph.write_png(os.path.join(out_dir, f'graph_test{ind + 1}.png'))
+                    graph.write_png(os.path.join(out_dir, f'graph_test{ind + 1}_{func_name}.png'))
 
             except (lark.UnexpectedCharacters, lark.GrammarError) as e:
                 print(
