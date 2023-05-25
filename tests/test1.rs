@@ -9,6 +9,7 @@ fn foo(var: int, baz: string) {
 
     x = 4.5;
 
+    return;
     if(3 == 4){
         let n: int = 2;
 
@@ -62,6 +63,25 @@ fn bar() -> tuple<list<int>, int> {
     for(a in i){
         a = a * read();
         a = 1;
+    }
+
+    case(x){
+
+    of(1){
+        write("idkdk");
+    }
+
+    of(2){
+        write("idkdk");
+    }
+
+    of(3){
+        write("sjsjskj");
+    }
+
+    default {
+        let thing: int = 89;
+    }
     }
 
     return |i, x|;

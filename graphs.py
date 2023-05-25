@@ -42,6 +42,9 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._fn_to_graph[self._curr_fn].add_node(node)
 
     def _add_edge(self, child_id: str):
+        if self._parent_id is None:
+            return
+
         edge: pydot.Edge = None
         if self._edge_color is not None:
             edge = pydot.Edge(
@@ -74,23 +77,22 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self.visit(tree.children[0])
 
     def func_defn(self, tree: lark.tree.Tree):
-
         self._curr_fn = tree.children[0]
         self._fn_to_graph[self._curr_fn] = pydot.Dot('F', graph_type='digraph')
         self._is_fn_scope = True
 
-        params_code = self.visit(tree.children[1])
+        params_code: str = self.visit(tree.children[1])
 
         type_code: str = ''
         inst_ind: int = 2
         if len(tree.children) > 2 and tree.children[2].data == 'type':
             inst_ind += 1
-            code = self.visit(tree.children[2])
-            type_code: str = f" -> {code}"
+            code: str = self.visit(tree.children[2])
+            type_code = f" -> {code}"
 
         this_id: int = self._next_id()
         self._parent_id = this_id
-        self._add_node(this_id, f'{tree.children[0]}{params_code}{type_code}')
+        self._add_node(this_id, f'{tree.children[0]}{params_code}{type_code}', fc='#c8f771')
 
         for c in tree.children[inst_ind:]:
             self.visit(c)
@@ -98,16 +100,17 @@ class GraphInterpreter(lark.visitors.Interpreter):
         dummy_id: int = self._next_id()
         self._add_node(dummy_id, '&lt;end fn&gt;', 'diamond', 'gray')
         self._add_edge(dummy_id)
-        self._is_fn_scope = False
 
-        mccabe_complexity: int = self._compute_mccabes_complexity()
-        self._add_node('complex', f"McCabe's complexity: {mccabe_complexity}", 'plaintext')
+        mccabes_complexity: int = self._compute_mccabes_complexity()
+        self._add_node('complex', f"McCabe's complexity: {mccabes_complexity}", 'plaintext')
+
+        self._is_fn_scope = False
 
     def func_params(self, tree: lark.tree.Tree) -> str:
         code_strs: list[str] = list()
 
         for c in tree.children:
-            bind_code = self.visit(c)
+            bind_code: str = self.visit(c)
             code_strs.append(bind_code)
 
         return f"({', '.join(code_strs)})"
@@ -116,8 +119,8 @@ class GraphInterpreter(lark.visitors.Interpreter):
         if not self._is_fn_scope:
             return
 
-        bind_code = self.visit(tree.children[0])
-        expr_code = self.visit(tree.children[1])
+        bind_code: str = self.visit(tree.children[0])
+        expr_code: str = self.visit(tree.children[1])
 
         this_id: int = self._next_id()
         self._add_node(this_id, f"{bind_code} = {expr_code}")
@@ -126,7 +129,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._parent_id = this_id
 
     def var_bind(self, tree: lark.tree.Tree) -> str:
-        code = self.visit(tree.children[1])
+        code: str = self.visit(tree.children[1])
         return f"{tree.children[0]}: {code}"
 
     def instruction(self, tree: lark.tree.Tree):
@@ -137,12 +140,15 @@ class GraphInterpreter(lark.visitors.Interpreter):
             self._parent_id = this_id
 
     def ret(self, tree: lark.tree.Tree):
-        return
-        #if len(tree.children) == 1:
-        #    code = self.visit(tree.children[0])
-        #    self._flush_err_string(f'return {code};')
-        #else:
-        #    self._flush_err_string(f'return;')
+        this_id: int = self._next_id()
+        if len(tree.children) == 1:
+            code: str = self.visit(tree.children[0])
+            self._add_node(this_id, f'return {code}', 'rectangle', '#e085dd')
+        else:
+            self._add_node(this_id, 'return', 'rectangle', '#e085dd')
+        self._add_edge(self._node_id)
+        self._edge_color = None
+        self._parent_id = None
 
     def attrib(self, tree: lark.tree.Tree):
         var: str = tree.children[0]
@@ -171,18 +177,18 @@ class GraphInterpreter(lark.visitors.Interpreter):
     def tuple_t(self, tree: lark.tree.Tree) -> str:
         code_strs: list[str] = list()
         for c in tree.children:
-            code = self.visit(c)
+            code: str = self.visit(c)
             code_strs.append(code)
 
         return f"tuple<{', '.join(code_strs)}>"
 
     def array_t(self, tree: lark.tree.Tree) -> str:
-        code = self.visit(tree.children[0])
-        size = self.visit(tree.children[1])
+        code: str = self.visit(tree.children[0])
+        size: str = self.visit(tree.children[1])
         return f"array<{code}, {size}>"
 
     def list_t(self, tree: lark.tree.Tree) -> str:
-        code = self.visit(tree.children[0])
+        code: str = self.visit(tree.children[0])
         return f"list<{code}>"
 
     def expression(self, tree: lark.tree.Tree) -> str:
@@ -190,76 +196,76 @@ class GraphInterpreter(lark.visitors.Interpreter):
             return self.visit(tree.children[0])
 
     def plus_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} + {code_rhs}"
 
     def minus_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} - {code_rhs}"
 
     def mul_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} * {code_rhs}"
 
     def div_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} / {code_rhs}"
 
     def mod_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} % {code_rhs}"
 
     def exp_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} ^ {code_rhs}"
 
     def prepend_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} ^: {code_rhs}"
 
     def append_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} $: {code_rhs}"
 
     def eq_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} == {code_rhs}"
 
     def neq_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} != {code_rhs}"
 
     def and_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} && {code_rhs}"
 
     def or_expr(self, tree: lark.tree.Tree) -> str:
-        code_lhs = self.visit(tree.children[0])
-        code_rhs = self.visit(tree.children[1])
+        code_lhs: str = self.visit(tree.children[0])
+        code_rhs: str = self.visit(tree.children[1])
         return f"{code_lhs} || {code_rhs}"
 
     def not_expr(self, tree: lark.tree.Tree) -> str:
-        code = self.visit(tree.children[0])
+        code: str = self.visit(tree.children[0])
         return f"!{code}"
 
     def paren_expr(self, tree: lark.tree.Tree) -> str:
-        code = self.visit(tree.children[0])
+        code: str = self.visit(tree.children[0])
         return f"({code})"
 
     def var_deref(self, tree: lark.tree.Tree) -> str:
         if len(tree.children) == 2:
-            code = self.visit(tree.children[1])
+            code: str = self.visit(tree.children[1])
             return f"{tree.children[0]}[{code}]"
         else:
             return tree.children[0]
@@ -268,7 +274,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
 
         code_strs: list[str] = list()
         for c in tree.children[1:]:
-            code = self.visit(c)
+            code: str = self.visit(c)
             code_strs.append(code)
 
         return f"{tree.children[0]}({', '.join(code_strs)})"
@@ -339,7 +345,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
             self._edge_color = None
 
     def unless_flow(self, tree: lark.tree.Tree):
-        code = self.visit(tree.children[0])
+        code: str = self.visit(tree.children[0])
 
         this_id: int = self._next_id()
         self._add_node(this_id, f'unless({code})', 'diamond')
@@ -365,51 +371,49 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._edge_color = None
         self._parent_id = dummy_id
 
-        return
-        code = self.visit(tree.children[0])
-
-        self._flush_err_string(f'unless({code}){{')
-
-        for c in tree.children[1:]:
-            self.visit(c)
-
-        self._html_buffer.write('}\n')
-
     def case_flow(self, tree: lark.tree.Tree):
-        return
+        code: str = self.visit(tree.children[0])
 
-        code = self.visit(tree.children[0])
+        this_id: int = self._next_id()
+        self._add_node(this_id, f'case({code})', 'diamond')
+        self._add_edge(this_id)
+        self._parent_id = this_id
+        self._edge_color = None
 
-        self._flush_err_string(f'case({code}){{')
+        dummy_id: int = self._next_id()
+        self._add_node(dummy_id, '&lt;end case&gt;', 'diamond', 'gray')
+
         for c in tree.children[1:]:
+            self._parent_id = this_id
             self.visit(c)
+            self._add_edge(dummy_id)
 
-        self._html_buffer.write('}\n')
+        self._parent_id = dummy_id
 
     def of_flow(self, tree: lark.tree.Tree):
-        return
-        code = self.visit(tree.children[0])
-        self._html_buffer.write(f'of({code}){{\n')
+        code: str = self.visit(tree.children[0])
+        this_id: int = self._next_id()
+        self._add_node(this_id, f'of({code})', 'diamond')
+        self._add_edge(this_id)
+        self._parent_id = this_id
 
         for c in tree.children[1:]:
             self.visit(c)
 
-        self._html_buffer.write('}\n')
-
     def default_flow(self, tree: lark.tree.Tree):
-        return
-        self._html_buffer.write('default {\n')
+        this_id: int = self._next_id()
+        self._add_node(this_id, 'default', 'diamond')
+        self._add_edge(this_id)
+        self._parent_id = this_id
 
         for c in tree.children:
             self.visit(c)
-
-        self._html_buffer.write('}\n')
 
     def loop_flow(self, tree: lark.tree.Tree):
         self.visit(tree.children[0])
 
     def while_flow(self, tree: lark.tree.Tree):
-        code = self.visit(tree.children[0])
+        code: str = self.visit(tree.children[0])
 
         this_id: int = self._next_id()
         self._add_node(this_id, f'while({code})', 'diamond')
@@ -441,7 +445,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
         for c in tree.children[0:-1]:
             self.visit(c)
 
-        code = self.visit(tree.children[-1])
+        code: str = self.visit(tree.children[-1])
 
         this_id: int = self._next_id()
         self._add_node(this_id, f'while({code})', 'diamond')
@@ -453,7 +457,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._edge_color = 'red'
 
     def for_flow(self, tree: lark.tree.Tree):
-        code = self.visit(tree.children[1])
+        code: str = self.visit(tree.children[1])
 
         this_id: int = self._next_id()
         self._add_node(this_id, f'for({tree.children[0]} in {code})', 'diamond')
@@ -481,7 +485,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
     def write(self, tree: lark.tree.Tree):
         code_strs: list[str] = list()
         for c in tree.children:
-            code = self.visit(c)
+            code: str = self.visit(c)
             code_strs.append(code)
 
         this_id: int = self._next_id()
@@ -491,11 +495,11 @@ class GraphInterpreter(lark.visitors.Interpreter):
         self._parent_id = this_id
 
     def head(self, tree: lark.tree.Tree) -> str:
-        code = self.visit(tree.children[0])
+        code: str = self.visit(tree.children[0])
         return f"head({code})"
 
     def tail(self, tree: lark.tree.Tree) -> str:
-        code = self.visit(tree.children[0])
+        code: str = self.visit(tree.children[0])
         return f"tail({code})"
 
     def literal(self, tree: lark.tree.Tree) -> str:
@@ -517,12 +521,12 @@ class GraphInterpreter(lark.visitors.Interpreter):
         if len(tree.children) == 0:
             return '[]'
 
-        code0 = self.visit(tree.children[0])
+        code0: str = self.visit(tree.children[0])
         code_strs: list[str] = list()
         code_strs.append(code0)
 
         for c in tree.children[1:]:
-            code = self.visit(c)
+            code: str = self.visit(c)
             code_strs.append(code)
 
         return f"[{', '.join(code_strs)}]"
@@ -531,12 +535,12 @@ class GraphInterpreter(lark.visitors.Interpreter):
         if len(tree.children) == 0:
             return r'{}'
 
-        code0 = self.visit(tree.children[0])
+        code0: str = self.visit(tree.children[0])
         code_strs: list[str] = list()
         code_strs.append(code0)
 
         for c in tree.children[1:]:
-            code = self.visit(c)
+            code: str = self.visit(c)
             code_strs.append(code)
 
         return f"{{{', '.join(code_strs)}}}"
@@ -544,7 +548,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
     def tuple_literal(self, tree: lark.tree.Tree) -> str:
         code_strs: list[str] = list()
         for c in tree.children:
-            code = self.visit(c)
+            code: str = self.visit(c)
             code_strs.append(code)
 
         return f"|{', '.join(code_strs)}|"
