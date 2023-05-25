@@ -13,7 +13,7 @@ fn foo() -> tuple<array<string, 4>, bool> {
     e = 12;
 
     let input: string = "";
-    let inputs: array<string, 4> = {};
+    let inputs: array<string, 4> = {"","","",""};
     for(a in {0,1,2}){
         let line: string = read();
         inputs[a] = line;

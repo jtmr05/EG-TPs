@@ -3,7 +3,6 @@ import enum
 import typing
 import io
 import textwrap
-import inspect
 
 
 _Typename = typing.Union['_Type', tuple['_Type', ...], tuple['_Type', int]]  # à lá C++
@@ -21,8 +20,6 @@ class _BaseType(enum.Enum):
     ANY = 8
 
     def __eq__(self, rhs: object):
-        print(type(rhs))
-        print(inspect.stack()[1][3], '\n')
         if rhs is None or not isinstance(rhs, _BaseType):
             return False
         if self is rhs or self.value == _BaseType.ANY.value or rhs.value == _BaseType.ANY.value:

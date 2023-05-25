@@ -15,6 +15,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
     def __init__(self):
         self._node_id = 0
         self._parent_id = None
+        self._edge_color = None
         self._is_fn_scope = False
         self._fn_to_graph = dict()
         self._curr_fn = ''
@@ -148,7 +149,7 @@ class GraphInterpreter(lark.visitors.Interpreter):
             self._add_node(this_id, 'return', 'rectangle', '#e085dd')
         self._add_edge(self._node_id)
         self._edge_color = None
-        self._parent_id = None
+        self._parent_id = this_id
 
     def attrib(self, tree: lark.tree.Tree):
         var: str = tree.children[0]
@@ -307,15 +308,10 @@ class GraphInterpreter(lark.visitors.Interpreter):
 
         # elif, else
         if end_ind < len(tree.children):
-            self._edge_color = 'red'
-            self._parent_id = this_id
-            elif_id: int = self.visit(tree.children[end_ind])
-            self._add_edge(dummy_id)
-
-            for c in tree.children[end_ind + 1:]:
+            for c in tree.children[end_ind:]:
                 self._edge_color = 'red'
-                self._parent_id = elif_id
-                elif_id = self.visit(c)
+                self._parent_id = this_id
+                this_id = self.visit(c)
                 self._add_edge(dummy_id)
         else:
             self._edge_color = 'red'
