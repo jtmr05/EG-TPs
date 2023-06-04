@@ -175,10 +175,7 @@ class StaticAnalysisInterpreter(lark.visitors.Interpreter):
     def has_errors(self) -> bool:
         return self._has_errors
 
-    #def unit(self, tree: lark.tree.Tree):
-    #    for c in tree.children:
-    #        self.visit(c)
-    #    self._html_buffer.write('</pre></div></body></html>')
+    ###############
 
     def construct(self, tree: lark.tree.Tree):
         self.visit(tree.children[0])

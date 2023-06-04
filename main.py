@@ -6,10 +6,12 @@ import os
 import io
 import pydot
 import re
+import textwrap
 
 from grammar import GRAMMAR
 from analyzer import StaticAnalysisInterpreter
-from graphs import GraphInterpreter
+from graphs import CFGraphInterpreter
+from graphs import SDGraphInterpreter
 from utils import annotate
 
 
@@ -56,19 +58,56 @@ def _gen_outputs(
                 f"==> test '{annotate(test, 1)}'\n{annotate('passed', 32, 1)}!",
                 file=sys.stderr
             )
-            graph_generator: GraphInterpreter = GraphInterpreter()
-            graph_generator.transform(tree)
+            cfgraph_generator: CFGraphInterpreter = CFGraphInterpreter()
+            cfgraph_generator.transform(tree)
 
-            pairs: list[tuple[str, pydot.Dot]] = graph_generator.get_func_name_graph_pairs()
-            for func_name, graph in pairs:
-                graph_base_fn: str = f'graph_{base_fn}_{func_name}'
-                graph_full_fn: str = os.path.join(out_dir, graph_base_fn)
-                _dump_to_file(f"{graph_full_fn}.gv", graph.to_string())
-                graph.write_png(f"{graph_full_fn}.png")
+            sdgraph_generator: SDGraphInterpreter = SDGraphInterpreter()
+            sdgraph_generator.transform(tree)
+
+            func_name_graphs_pairs: list[tuple[str, pydot.Dot], tuple[str, pydot.Dot]] = (
+                zip(
+                    cfgraph_generator.get_func_name_graph_pairs(),
+                    sdgraph_generator.get_func_name_graph_pairs()
+                )
+            )
+            for (func_name, cfgraph), (_, sdgraph) in func_name_graphs_pairs:
+                cfgraph_base_fn: str = f'cfgraph_{base_fn}_{func_name}'
+                cfgraph_full_fn: str = os.path.join(out_dir, cfgraph_base_fn)
+                _dump_to_file(f"{cfgraph_full_fn}.gv", cfgraph.to_string())
+                cfgraph.write_png(f"{cfgraph_full_fn}.png")
+
+                sdgraph_base_fn: str = f'sdgraph_{base_fn}_{func_name}'
+                sdgraph_full_fn: str = os.path.join(out_dir, sdgraph_base_fn)
+                _dump_to_file(f"{sdgraph_full_fn}.gv", sdgraph.to_string())
+                sdgraph.write_png(f"{sdgraph_full_fn}.png")
+
+                html_graphs_code: str = textwrap.dedent(
+                    f'''
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <title>Grafos</title>
+                        <meta charset="utf-8"/>
+                      </head>
+                      <body>
+
+                        <h2><i>Control Flow Graph</i></h2>
+                        <img src="{cfgraph_base_fn}.png"/>
+
+                        <h2><i>System Dependency Graph</i></h2>
+                        <img src="{sdgraph_base_fn}.png"/>
+
+                      </body>
+                    </html>
+                    '''
+                )
+                html_graphs_base_fn: str = f"graphs_{base_fn}_{func_name}.html"
+                html_graphs_full_fn: str = os.path.join(out_dir, html_graphs_base_fn)
+                _dump_to_file(html_graphs_full_fn, html_graphs_code)
 
                 html_str = re.sub(
                     f'^fn {func_name}',
-                    f'fn <a href="{graph_base_fn}.png">{func_name}</a>',
+                    f'fn <a href="{html_graphs_base_fn}">{func_name}</a>',
                     html_str,
                     flags=re.MULTILINE
                 )

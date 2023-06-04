@@ -1,5 +1,9 @@
 let y: bool = true;
 
+fn baz() -> int {
+    return 1;
+}
+
 fn foo(var: int, baz: string) {
     let x: float = 3.0;
 
@@ -16,6 +20,7 @@ fn foo(var: int, baz: string) {
         if(true && false){
             let t: tuple<string, int> = |"", 0|;
         }
+
     }
     else {
         write("foo");
@@ -27,6 +32,9 @@ fn foo(var: int, baz: string) {
 fn bar() -> tuple<list<int>, int> {
 
     let count: int = 39489;
+    count = count * 2;
+    return |[], 1|;
+    count = 1;
 
     while(count != 0){
         count = count / 2;
@@ -34,7 +42,7 @@ fn bar() -> tuple<list<int>, int> {
             count = count - 1;
         }
         elif(count % 3 != 0){
-            count = count + 2;
+            baz();
         }
         elif(count % 4 != 0){
             count = count + 3 ^ 800;
