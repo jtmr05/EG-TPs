@@ -1,17 +1,9 @@
 import lark
 import typing
 import pydot
-import abc
 
 
-class GraphInterpreter(lark.visitors.Interpreter):
-
-    @abc.abstractmethod
-    def get_func_name_graph_pairs(self) -> list[tuple[str, pydot.Dot]]:
-        pass
-
-
-class CFGraphInterpreter(GraphInterpreter):
+class CFGraphInterpreter(lark.visitors.Interpreter):
 
     _node_id: int
     _parent_id: typing.Optional[int]
@@ -562,7 +554,7 @@ class CFGraphInterpreter(GraphInterpreter):
         return f"|{', '.join(code_strs)}|"
 
 
-class SDGraphInterpreter(GraphInterpreter):
+class SDGraphInterpreter(lark.visitors.Interpreter):
 
     _node_id: int
     _parent_id: typing.Optional[int]
